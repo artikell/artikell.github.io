@@ -98,6 +98,234 @@
 		<div class="markdown-body home-categories">
 		
 			<div class="article">
+                <a class="clearlink" href="15285605915126.html">
+                
+                  <h1>Redis 淘汰策略解读</h1>
+                  <div class="a-content">
+                      
+                      <div class="a-content-text">
+                        
+                        	<h2 id="toc_0">前言</h2>
+
+<p><em>Redis</em>本身是一款高效的内存数据库，内存数据库中很重要的一点在于能很好的利用并管理内存，这也衍生出了内存淘汰策略，这和操作系统的内存页管理机制相同，拥有各种淘汰算法，例如：FIFO、LRU、OPT等，这次我们主要是讨论一下关于<em>Redis</em>本身的内存淘汰策略。</p>
+
+<h2 id="toc_1">几大淘汰策略</h2>
+
+<p>内存淘汰策略的设置项为<em>maxmemory-policy</em>，其中拥有6种策略：<br/>
+1. <em>noeviction</em>策略(不淘汰策略)<br/>
+   该策略不进行内存淘汰，当内存达到阀值后，将会报错。但该策略为默认策略，所以每次启用<em>Redis</em>服务时，最好是设置一下淘汰策略<br/>
+2. <em>allkeys-lru</em>策略(主键lru策略)<br/>
+   在主键空间中，优先移除最近未使用的key。<br/>
+3. <em>volatile-lru</em>策略(过期键lru策略)<br/>
+   在设置了过期时间的键空间中，优先移除最近未使用的key。<br/>
+4. <em>allkeys-random</em>策略(主键随机淘汰策略)<br/>
+   在主键空间中，随机移除某个key。<br/>
+5. <em>volatile-random</em>策略(过期键随机淘汰策略)<br/>
+   在设置了过期时间的键空间中，随机移除某个key。<br/>
+6. <em>volatile-ttl</em>策略(过期键fifo策略)<br/>
+   在设置了过期时间的键空间中，具有更早过期时间的key优先移除。</p>
+
+<p>对于不同淘汰机制，也存在相关的使用场景：<br/>
+1. <em>allkeys-lru</em>：如果我们的应用对缓存的访问符合幂律分布（也就是存在相对热点数据），或者我们不太清楚我们应用的缓存访问分布状况，我们可以选择<em>allkeys-lru</em>策略。<br/>
+2. <em>allkeys-random</em>：如果我们的应用对于缓存<em>key</em>的访问概率相等，则可以使用这个策略。<br/>
+3. <em>volatile-ttl</em>：这种策略使得我们可以向<em>Redis</em>提示哪些<em>key</em>更适合被<em>eviction</em>。</p>
+
+<h2 id="toc_2">过期键淘汰逻辑</h2>
+
+<p>淘汰逻辑<em>Redis</em>本身存在2种方式的淘汰并存，这样做的目的也是为了提高效率。</p>
+
+<h3 id="toc_3">惰性淘汰逻辑</h3>
+
+<p><em>Redis</em>当键值已经超出失效时间时，是无法做到及时的将内存进行空闲出来，同时考虑到及时的将内存空闲出来会需要有十分高的成本。<br/>
+于是<em>Redis</em>将淘汰功能，下发至各个命令操作中，当有客户端对相关的键进行访问时，命令将会调用<em>expireIfNeeded</em>方法来判断键值是否已经失效，若是，则将其删除。</p>
+
+<pre><code>int expireIfNeeded(redisDb *db, robj *key) {
+    mstime_t when = getExpire(db,key);
+    
+    mstime_t now;
+
+    if (when &lt; 0) return 0;
+
+    if (server.loading) return 0;
+
+    now = server.lua_caller ? server.lua_time_start : mstime();
+
+    if (server.masterhost != NULL) return now &gt; when;
+
+    if (now &lt;= when) return 0;
+
+    server.stat_expiredkeys++;
+    propagateExpire(db,key,server.lazyfree_lazy_expire);
+    notifyKeyspaceEvent(NOTIFY_EXPIRED,
+        &quot;expired&quot;,key,db-&gt;id);
+    return server.lazyfree_lazy_expire ? dbAsyncDelete(db,key) :
+                                         dbSyncDelete(db,key);
+}
+</code></pre>
+
+<p><em>expireIfNeeded</em>函数大致逻辑如下：<br/>
+1. 获取当前键的失效时间<br/>
+2. 判断失效时间是否小于0，是则表示不失效<br/>
+3. 判断当前服务器是否正在加载数据信息<br/>
+4. 获取当前时间<br/>
+5. 判断是否已经失效<br/>
+6. 统计失效键信息<br/>
+7. 发送失效键信息至其余节点<br/>
+8. 发送键失效通知给订阅通道<br/>
+9. 键值删除</p>
+
+<blockquote>
+<p>其中键删除操作包括同步删除和异步删除，这次不进行细讲</p>
+</blockquote>
+
+<h3 id="toc_4">主动淘汰逻辑</h3>
+
+<p>消极方法的缺点是，如果<em>key</em>迟迟不被访问，就会占用很多内存空间。 所以就产生的主动淘汰：此方法利用了<em>Redis</em>的时间事件，即每隔一段时间就中断一下完成一些指定操作，其中就包括检查并删除失效主键。<br/>
+主动淘汰机制相关的配置项为<em>set-active-expire</em>，主要的调用位置为：<em>beforeSleep</em> 和 <em>databasesCron</em> ，一个是事件循环前触发，一个是数据库定时触发。</p>
+
+<pre><code class="language-void">    static unsigned int current_db = 0; /* Last DB tested. */
+    static int timelimit_exit = 0;      /* Time limit hit in previous call? */
+    static long long last_fast_cycle = 0; /* When last fast cycle ran. */
+
+    int j, iteration = 0;
+    int dbs_per_call = CRON_DBS_PER_CALL;
+    long long start = ustime(), timelimit, elapsed;
+
+    if (clientsArePaused()) return;
+
+    if (type == ACTIVE_EXPIRE_CYCLE_FAST) {
+        if (!timelimit_exit) return;
+        if (start &lt; last_fast_cycle + ACTIVE_EXPIRE_CYCLE_FAST_DURATION*2) return;
+        last_fast_cycle = start;
+    }
+
+    if (dbs_per_call &gt; server.dbnum || timelimit_exit)
+        dbs_per_call = server.dbnum;
+
+    timelimit = 1000000*ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC/server.hz/100;
+    timelimit_exit = 0;
+    if (timelimit &lt;= 0) timelimit = 1;
+
+    if (type == ACTIVE_EXPIRE_CYCLE_FAST)
+        timelimit = ACTIVE_EXPIRE_CYCLE_FAST_DURATION; /* in microseconds. */
+
+    long total_sampled = 0;
+    long total_expired = 0;
+
+    for (j = 0; j &lt; dbs_per_call &amp;&amp; timelimit_exit == 0; j++) {
+        int expired;
+        redisDb *db = server.db+(current_db % server.dbnum);
+
+        current_db++;
+        do {
+            unsigned long num, slots;
+            long long now, ttl_sum;
+            int ttl_samples;
+            iteration++;
+
+            if ((num = dictSize(db-&gt;expires)) == 0) {
+                db-&gt;avg_ttl = 0;
+                break;
+            }
+            slots = dictSlots(db-&gt;expires);
+            now = mstime();
+            
+            if (num &amp;&amp; slots &gt; DICT_HT_INITIAL_SIZE &amp;&amp;
+                (num*100/slots &lt; 1)) break;
+
+            expired = 0;
+            ttl_sum = 0;
+            ttl_samples = 0;
+
+            if (num &gt; ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP)
+                num = ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP;
+
+            while (num--) {
+                dictEntry *de;
+                long long ttl;
+
+                if ((de = dictGetRandomKey(db-&gt;expires)) == NULL) break;
+                ttl = dictGetSignedIntegerVal(de)-now;
+                if (activeExpireCycleTryExpire(db,de,now)) expired++;
+                if (ttl &gt; 0) {
+                    /* We want the average TTL of keys yet not expired. */
+                    ttl_sum += ttl;
+                    ttl_samples++;
+                }
+                total_sampled++;
+            }
+            total_expired += expired;
+
+            if (ttl_samples) {
+                long long avg_ttl = ttl_sum/ttl_samples;
+
+                if (db-&gt;avg_ttl == 0) db-&gt;avg_ttl = avg_ttl;
+                db-&gt;avg_ttl = (db-&gt;avg_ttl/50)*49 + (avg_ttl/50);
+            }
+
+            if ((iteration &amp; 0xf) == 0) { /* check once every 16 iterations. */
+                elapsed = ustime()-start;
+                if (elapsed &gt; timelimit) {
+                    timelimit_exit = 1;
+                    server.stat_expired_time_cap_reached_count++;
+                    break;
+                }
+            }
+        } while (expired &gt; ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP/4);
+    }
+
+    elapsed = ustime()-start;
+    latencyAddSampleIfNeeded(&quot;expire-cycle&quot;,elapsed/1000);
+
+    double current_perc;
+    if (total_sampled) {
+        current_perc = (double)total_expired/total_sampled;
+    } else
+        current_perc = 0;
+    server.stat_expired_stale_perc = (current_perc*0.05)+
+                                     (server.stat_expired_stale_perc*0.95);
+}
+
+</code></pre>
+
+<p><em>activeExpireCycle</em>函数关键点如下：<br/>
+1. 函数提供了 <em>ACTIVE_EXPIRE_CYCLE_FAST</em> 和 <em>ACTIVE_EXPIRE_CYCLE_SLOW</em> 2种模式，区别在于：FAST模式本身对时间有苛刻的要求，不允许淘汰键导致过高的延时，所以会有一个超时时间(1000ms)的限制。<br/>
+2. 函数会遍历每个数据库，然后从过期键中获取20个值，若20个中淘汰了5个，则继续淘汰，尽可能的保证过期比例小于0.25。<br/>
+3. 其中，函数会统计相关的超时情况以及淘汰时间等。</p>
+
+<h2 id="toc_5">内存淘汰逻辑</h2>
+
+<h2 id="toc_6">总结</h2>
+
+<h2 id="toc_7">参考链接</h2>
+
+<ul>
+<li><a href="https://blog.csdn.net/kl1106/article/details/79566594">CSDN - Redis缓存淘汰</a></li>
+<li><a href="https://blog.csdn.net/lizhi_java/article/details/68953179">CSDN - 缓存淘汰策略</a></li>
+</ul>
+
+                        
+                      </div>
+                  </div>
+                </a>
+                <div class="read-more clearfix">
+                  <div class="more-left left">
+                  
+                    <span class="date">2018/6/10</span>
+                    
+          				   
+                  </div>
+                  <div class="more-right right">
+                  <span class="comments">
+                      
+
+                       
+                  </span>
+                  </div>
+                </div>
+              </div><!-- article -->
+        
+			<div class="article">
                 <a class="clearlink" href="15284948308748.html">
                 
                   <h1>Hello World</h1>
@@ -194,6 +422,12 @@
                 <div class="side-content">
                 <ul class="posts-list">
 	      
+		      
+			      <li class="post">
+			        <a href="15285605915126.html">Redis 淘汰策略解读</a>
+			      </li>
+		     
+		  
 		      
 			      <li class="post">
 			        <a href="15284948308748.html">Hello World</a>
