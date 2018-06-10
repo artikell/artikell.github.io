@@ -98,9 +98,159 @@
 		<div class="markdown-body home-categories">
 		
 			<div class="article">
+                <a class="clearlink" href="15286147511534.html">
+                
+                  <h1>Redis 对象Object</h1>
+                  <div class="a-content">
+                      
+                      <div class="a-content-text">
+                        
+                        	<h2 id="toc_0">前言</h2>
+
+<p>在<em>Redis</em>中，对对象拥有一套管理的机制，包括引用、内存、以及淘汰机制，这套机制的的建立，便是Object结构体本身的设计，所以此次，我们通过相关的方面来了解<em>Object</em>对象。</p>
+
+<h2 id="toc_1">主要的类型</h2>
+
+<p>在对象系统中，共有6个类型：<code>string、list、set、zset、hash、stream</code>。</p>
+
+<p>相对应的基础的数据结构也有7类：<code>string、adlist、ziplist、quicklist、dict、skiplist、inset</code></p>
+
+<p>下面的表格将会列出各个类型对应的使用的数据结构：</p>
+
+<table>
+<thead>
+<tr>
+<th>Type_Encoding</th>
+<th>DataStruct</th>
+<th>Limit</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>String_int</td>
+<td>long long</td>
+<td>Element is int</td>
+</tr>
+<tr>
+<td>String_raw</td>
+<td>sbs</td>
+<td>Length &gt; 44</td>
+</tr>
+<tr>
+<td>String_embstr</td>
+<td>embstr</td>
+<td>Length &lt;= 44</td>
+</tr>
+<tr>
+<td>List_ziplist</td>
+<td>ziplist</td>
+<td>Default</td>
+</tr>
+<tr>
+<td>List_quicklist</td>
+<td>quicklist</td>
+<td>Size &gt; 64 or Count &gt; 512</td>
+</tr>
+<tr>
+<td>Set_ht</td>
+<td>dict</td>
+<td>Element isn’t int or Cout &gt; 512</td>
+</tr>
+<tr>
+<td>Set_intset</td>
+<td>intset</td>
+<td>Default</td>
+</tr>
+<tr>
+<td>Hash_ziplist</td>
+<td>ziplist</td>
+<td>Default</td>
+</tr>
+<tr>
+<td>Hash_ht</td>
+<td>dict</td>
+<td>Size &gt; 64 or Count &gt; 512</td>
+</tr>
+<tr>
+<td>Zset_skiplist</td>
+<td>dict、skiplist</td>
+<td>Size &gt; 64 or Count &gt; 128</td>
+</tr>
+<tr>
+<td>Zset_ziplist</td>
+<td>ziplist</td>
+<td>Default</td>
+</tr>
+</tbody>
+</table>
+
+<p>大部分情况的转换都是根据元素个数与元素大小超过限制进行判断。当然这些限制也是可配置项：</p>
+
+<pre><code>hash-max-ziplist-entries 512 
+hash-max-ziplist-value 64 
+list-max-ziplist-entries 512 
+list-max-ziplist-value 64 
+set-max-intset-entries 512 
+zset-max-ziplist-entries 128 
+zset-max-ziplist-value 64
+</code></pre>
+
+<h2 id="toc_2">Object的设计</h2>
+
+<p><em>Object</em>的设计拥有所有对象系统共有的特征：<em>relcount、ptr、type</em>。细节的结构体如下：</p>
+
+<pre><code>typedef struct redisObject {
+    unsigned type:4;
+    unsigned encoding:4;
+    unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
+                            * LFU data (least significant 8 bits frequency
+                            * and most significant 16 bits access time). */
+    int refcount;
+    void *ptr;
+} robj;
+</code></pre>
+
+<p>结构体不难理解，拥有类型、编码、超时权重、引用次数以及所指内存。<br/>
+其中<em>类型\编码</em>在上一节已经列举出来，相关的类型原理之后再进行描述。</p>
+
+<h2 id="toc_3">对象的销毁以及共享</h2>
+
+<p>在拥有对象引用属性时，系统就会考虑对象销毁的时机。对象系统提供了<em>decrRefCount</em>和<em>incrRefCount</em>2个方法，前者用于减少引用数，后者相反。</p>
+
+<p>所以，当<em>Redis</em>使用完对象时，会调用<em>decrRefCount</em>方法来减少引用数，当发现引用数为1时，说明当前对象需要被销毁，对象系统会主动调用相关类型的销毁函数进行内存清理。</p>
+
+<p>当然，<em>Redis</em>为了高效，提供了共享对象，其中包含<em>1~10000</em>中间的所有数字，创建时将其的引用数设置为无穷大，同时在减少引用数的时候，判断引用数是否为无穷大，是则不进行引用数减少，提高了内存利用率</p>
+
+<h2 id="toc_4">总结</h2>
+
+<p>关于Redis的对象系统，其实没有什么需要过多的介绍，对于对象来说，<em>Redis</em>本身对不同的类型进行了多态化的分解，导致主要的操作都分散在各个部分中，包括淘汰策略、以及内存分配等。</p>
+
+                        
+                      </div>
+                  </div>
+                </a>
+                <div class="read-more clearfix">
+                  <div class="more-left left">
+                  
+                    <span class="date">2018/6/10</span>
+                    
+          				   
+                  </div>
+                  <div class="more-right right">
+                  <span class="comments">
+                      
+
+                       
+                  </span>
+                  </div>
+                </div>
+              </div><!-- article -->
+        
+			<div class="article">
                 <a class="clearlink" href="15285709665764.html">
                 
-                  <h1>Reis 字典扫描算法</h1>
+                  <h1>Redis 字典扫描算法</h1>
                   <div class="a-content">
                       
                       <div class="a-content-text">
@@ -558,7 +708,13 @@
 	      
 		      
 			      <li class="post">
-			        <a href="15285709665764.html">Reis 字典扫描算法</a>
+			        <a href="15286147511534.html">Redis 对象Object</a>
+			      </li>
+		     
+		  
+		      
+			      <li class="post">
+			        <a href="15285709665764.html">Redis 字典扫描算法</a>
 			      </li>
 		     
 		  
