@@ -4,13 +4,322 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2018-06-10T19:36:00+08:00</updated>
+  <updated>2018-06-12T00:28:59+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
     
   </author>
   <generator uri="http://www.mweb.im/">MWeb</generator>
+  
+  <entry>
+    <title type="html"><![CDATA[Redis 有序列表zset源码解析]]></title>
+    <link href="https://artikell.github.io/15287304018827.html"/>
+    <updated>2018-06-11T23:20:01+08:00</updated>
+    <id>https://artikell.github.io/15287304018827.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">前言</h2>
+
+<p>有序列表底层使用了<em>ziplist</em>和<em>skiplist</em>2种数据结构，2者都是redis中相对比较复杂的数据结构，此次，我们来通过主要的命令来解析相关的核心操作。</p>
+
+<h2 id="toc_1">相关命令</h2>
+
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>解释</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>Zadd</td>
+<td>创建</td>
+<td>将带有给定分值的成员添加到有序列表里面</td>
+</tr>
+<tr>
+<td>Zrem</td>
+<td>删除</td>
+<td>从有序集合里面移除给定的成员，并返回被移除成员的数量</td>
+</tr>
+<tr>
+<td>Zcard</td>
+<td>查询</td>
+<td>返回有序集合包含的成员数量</td>
+</tr>
+<tr>
+<td>Zincrby</td>
+<td>修改</td>
+<td>将member成员的分值加上increment</td>
+</tr>
+<tr>
+<td>Zcount</td>
+<td>查询</td>
+<td>返回分值介于min和max之间的成员数量，包括min和max在内</td>
+</tr>
+<tr>
+<td>Zrank</td>
+<td>查询</td>
+<td>返回成员member在有序集合中的排名，成员按照分值从小到大排列</td>
+</tr>
+<tr>
+<td>Zrevrank</td>
+<td>查询</td>
+<td>返回成员member在有序集合中的排名 ，成员按照分值从大到小排列</td>
+</tr>
+<tr>
+<td>Zscore</td>
+<td>查询</td>
+<td>返回成员member的分值</td>
+</tr>
+<tr>
+<td>Zrange</td>
+<td>查询</td>
+<td>返回有序集合中排名介于start和stop之间的成员，包括start和stop在内，如果给定了可选的WITHSCORES选项，那么命令会将成员的分值一并返回，成员按照分值从小到大排列</td>
+</tr>
+<tr>
+<td>Zrevrange</td>
+<td>查询</td>
+<td>返回有序集合中排名介于start和stop之间的成员，包括start和stop在内，如果给定了可选的WITHSCORES选项，那么命令会将成员的分值一并返回，成员按照分值从大到小排列</td>
+</tr>
+<tr>
+<td>Zrangebyscore</td>
+<td>查询</td>
+<td>返回有序集合中分值介于min和max之间的所有成员，包括min和max在内，并按照分值从小到大的排序来返回他们</td>
+</tr>
+<tr>
+<td>Zrevrangebyscore</td>
+<td>查询</td>
+<td>返回有序集合中分值介于min和max之间的所有成员，包括min和max在内，并按照分值从大到小的排序来返回他们</td>
+</tr>
+<tr>
+<td>Zremrangebyrank</td>
+<td>删除</td>
+<td>移除有序集合中排名介于start和stop之间的所有成员，包括start和stop在内</td>
+</tr>
+<tr>
+<td>Zremrangebyscore</td>
+<td>删除</td>
+<td>移除有序集合中分值介于min和max之间的所有成员，包括min和max在内</td>
+</tr>
+<tr>
+<td>Zinterstore</td>
+<td>合并</td>
+<td>对给定的有序集合执行类似于集合的交集运算</td>
+</tr>
+<tr>
+<td>Zunionstore</td>
+<td>合并</td>
+<td>对给定的有序集合执行类似于集合的并集运算</td>
+</tr>
+</tbody>
+</table>
+
+<p>其中 <em>查询操作</em> 包含 9个命令，<em>增加或更新</em>只有2个，而<em>删除类命令</em>包括了3个。</p>
+
+<p>这么一看，核心操作主要在于如何高效查询，以及如何进行底层数据结构的升级。</p>
+
+<h2 id="toc_2">高效查询</h2>
+
+<p>查询本身也分为2类：单元素查询、范围查询。</p>
+
+<h3 id="toc_3">单元素查询</h3>
+
+<p>单元素查询相对比较简单，一般都是某个成员的分值、排名等信息。2者之间的核心就是在于：如何快速查询到所需的成员。</p>
+
+<h4 id="toc_4">对于ziplist</h4>
+
+<p>ziplist最多也就512个元素，所以，不需要什么算法，暴力就行！！！</p>
+
+<pre><code>while(eptr != NULL) {
+    if (ziplistCompare(eptr,(unsigned char*)ele,sdslen(ele)))
+        break;
+    rank++;
+    zzlNext(zl,&amp;eptr,&amp;sptr);
+}
+</code></pre>
+
+<h4 id="toc_5">对于skiplist</h4>
+
+<p><em>skiplist</em>本身可能会有很多元素，所以，本身的设计也是为了高效设计，所以，本身按照跳跃表的特性，我们只需要从最大的元素开始不断往下寻找元素即可。</p>
+
+<pre><code>for (i = zsl-&gt;level-1; i &gt;= 0; i--) {
+    while (x-&gt;level[i].forward &amp;&amp;
+        (x-&gt;level[i].forward-&gt;score &lt; score ||
+            (x-&gt;level[i].forward-&gt;score == score &amp;&amp;
+            sdscmp(x-&gt;level[i].forward-&gt;ele,ele) &lt;= 0))) {
+        rank += x-&gt;level[i].span;
+        x = x-&gt;level[i].forward;
+    }
+
+    /* x might be equal to zsl-&gt;header, so test if obj is non-NULL */
+    if (x-&gt;ele &amp;&amp; sdscmp(x-&gt;ele,ele) == 0) {
+        return rank;
+    }
+}
+</code></pre>
+
+<h3 id="toc_6">范围查询</h3>
+
+<p>范围查询也可以分为3类：<em>分值范围、排名范围、字符串匹配</em>。不过三者之间的差异并没有特别巨大，也可以根据不同的结构体进行分类讨论。</p>
+
+<h4 id="toc_7">对于ziplist</h4>
+
+<p>ziplist 本身由于节省内存，所以，方法上没有不同，照常还是遍历。</p>
+
+<p>首先，ziplist会获取的范围的对象，通过first类函数找到最初的元素：</p>
+
+<pre><code>    while (eptr != NULL) {
+        sptr = ziplistNext(zl,eptr);
+        serverAssert(sptr != NULL);
+
+        score = zzlGetScore(sptr);
+        if (zslValueGteMin(score,range)) {
+            /* Check if score &lt;= max. */
+            if (zslValueLteMax(score,range))
+                return eptr;
+            return NULL;
+        }
+
+        /* Move to next element. */
+        eptr = ziplistNext(zl,sptr);
+    }
+</code></pre>
+
+<p>找到起始元素后，会通过迭代的方式来获取范围类的数据，并进行删除。</p>
+
+<pre><code>while ((sptr = ziplistNext(zl,eptr)) != NULL) {
+    if (zzlLexValueLteMax(eptr,range)) {
+        /* Delete both the element and the score. */
+        zl = ziplistDelete(zl,&amp;eptr);
+        zl = ziplistDelete(zl,&amp;eptr);
+        num++;
+    } else {
+        /* No longer in range. */
+        break;
+    }
+}
+</code></pre>
+
+<h4 id="toc_8">对于skiplist</h4>
+
+<p>skiplist 本身的高效，所以，不需要特别的处理，不过，也只是在最开始的时候快速找到起始元素，然后开始不断遍历。</p>
+
+<pre><code>x = zsl-&gt;header;
+for (i = zsl-&gt;level-1; i &gt;= 0; i--) {
+    while (x-&gt;level[i].forward &amp;&amp;
+        !zslLexValueGteMin(x-&gt;level[i].forward-&gt;ele,range))
+            x = x-&gt;level[i].forward;
+    update[i] = x;
+}
+
+/* Current node is the last with score &lt; or &lt;= min. */
+x = x-&gt;level[0].forward;
+
+/* Delete nodes while in range. */
+while (x &amp;&amp; zslLexValueLteMax(x-&gt;ele,range)) {
+    zskiplistNode *next = x-&gt;level[0].forward;
+    zslDeleteNode(zsl,x,update);
+    dictDelete(dict,x-&gt;ele);
+    zslFreeNode(x); /* Here is where x-&gt;ele is actually released. */
+    removed++;
+    x = next;
+}
+</code></pre>
+
+<h2 id="toc_9">合并操作</h2>
+
+<p>对于差集，多个集合进行轮询，判断第一个集合的元素是否在其他集合中，若存在，则添加进一个新建的有序集合中即可。</p>
+
+<p>对于并集，那就是先把所有集合全部插入一个字典中，在遍历字典，插入集合中即可。</p>
+
+<p>2者默认都是skiplist模式的有序列表。</p>
+
+<h2 id="toc_10">总结</h2>
+
+<p>此次只看到一点皮毛，感觉redis源码很多地方写法与自身写法不同，侧面反映作者注重于效率。</p>
+
+<h2 id="toc_11">相关链接</h2>
+
+<ul>
+<li><a href="https://blog.csdn.net/xiaouncle/article/details/62236593">Redis常用命令-Zset</a></li>
+</ul>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Redis常用数据类型介绍、使用场景]]></title>
+    <link href="https://artikell.github.io/15286369556294.html"/>
+    <updated>2018-06-10T21:22:35+08:00</updated>
+    <id>https://artikell.github.io/15286369556294.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">String（字符串）</h2>
+
+<p>String是简单的 key-value 键值对，value 不仅可以是 String，也可以是数字。String在redis内部存储默认就是一个字符串，被redisObject所引用，当遇到incr,decr等操作时会转成数值型进行计算，此时redisObject的encoding字段为int。</p>
+
+<p>String在redis内部存储默认就是一个字符串，被redisObject所引用，当遇到incr,decr等操作时会转成数值型进行计算，此时redisObject的encoding字段为int。</p>
+
+<h3 id="toc_1">应用场景</h3>
+
+<p>String是最常用的一种数据类型，普通的key/value存储都可以归为此类，这里就不所做解释了。</p>
+
+<h2 id="toc_2">List（列表）</h2>
+
+<p>Redis列表是简单的字符串列表，可以类比到C++中的std::list，简单的说就是一个链表或者说是一个队列。可以从头部或尾部向Redis列表添加元素。列表的最大长度为2<sup>32</sup> - 1，也即每个列表支持超过40亿个元素。</p>
+
+<p>Redis list的实现为一个双向链表，即可以支持反向查找和遍历，更方便操作，不过带来了部分额外的内存开销，Redis内部的很多实现，包括发送缓冲队列等也都是用的这个数据结构。</p>
+
+<h3 id="toc_3">应用场景</h3>
+
+<p>Redis list的应用场景非常多，也是Redis最重要的数据结构之一，比如twitter的关注列表、粉丝列表等都可以用Redis的list结构来实现，再比如有的应用使用Redis的list类型实现一个简单的轻量级消息队列，生产者push，消费者pop/bpop。</p>
+
+<h2 id="toc_4">Hash（字典，哈希表）</h2>
+
+<p>类似C#中的dict类型或者C++中的hash_map类型。</p>
+
+<p>Redis Hash对应Value内部实际就是一个HashMap，实际这里会有2种不同实现，这个Hash的成员比较少时Redis为了节省内存会采用类似一维数组的方式来紧凑存储，而不会采用真正的HashMap结构，对应的value redisObject的encoding为zipmap,当成员数量增大时会自动转成真正的HashMap,此时encoding为ht。</p>
+
+<h3 id="toc_5">应用场景</h3>
+
+<p>假设有多个用户及对应的用户信息，可以用来存储以用户ID为key，将用户信息序列化为比如json格式做为value进行保存。</p>
+
+<h2 id="toc_6">Set（集合）</h2>
+
+<p>可以理解为一堆值不重复的列表，类似数学领域中的集合概念，且Redis也提供了针对集合的求交集、并集、差集等操作。</p>
+
+<p>set 的内部实现是一个 value永远为null的HashMap，实际就是通过计算hash的方式来快速排重的，这也是set能提供判断一个成员是否在集合内的原因。</p>
+
+<h3 id="toc_7">应用场景</h3>
+
+<p>Redis set对外提供的功能与list类似是一个列表的功能，特殊之处在于set是可以自动排重的，当你需要存储一个列表数据，又不希望出现重复数据时，set是一个很好的选择，并且set提供了判断某个成员是否在一个set集合内的重要接口，这个也是list所不能提供的。</p>
+
+<p>又或者在微博应用中，每个用户关注的人存在一个集合中，就很容易实现求两个人的共同好友功能。</p>
+
+<h2 id="toc_8">Sorted Set（有序集合）</h2>
+
+<p>Redis有序集合类似Redis集合，不同的是增加了一个功能，即集合是有序的。一个有序集合的每个成员带有分数，用于进行排序。</p>
+
+<p>Redis有序集合添加、删除和测试的时间复杂度均为O(1)(固定时间，无论里面包含的元素集合的数量)。列表的最大长度为2<sup>32-</sup> 1元素(4294967295，超过40亿每个元素的集合)。</p>
+
+<p>Redis sorted set的内部使用HashMap和跳跃表(SkipList)来保证数据的存储和有序，HashMap里放的是成员到score的映射，而跳跃表里存放的是所有的成员，排序依据是HashMap里存的score,使用跳跃表的结构可以获得比较高的查找效率，并且在实现上比较简单。</p>
+
+<h3 id="toc_9">使用场景</h3>
+
+<p>Redis sorted set的使用场景与set类似，区别是set不是自动有序的，而sorted set可以通过用户额外提供一个优先级(score)的参数来为成员排序，并且是插入有序的，即自动排序。当你需要一个有序的并且不重复的集合列表，那么可以选择sorted set数据结构，比如twitter 的public timeline可以以发表时间作为score来存储，这样获取时就是自动按时间排好序的。</p>
+
+<p>又比如用户的积分排行榜需求就可以通过有序集合实现。还有上面介绍的使用List实现轻量级的消息队列，其实也可以通过Sorted Set实现有优先级或按权重的队列。</p>
+
+<h2 id="toc_10">相关链接</h2>
+
+<ul>
+<li><a href="https://www.cnblogs.com/lizhenghn/p/5322887.html">Redis常用数据类型介绍、使用场景及其操作命令</a></li>
+</ul>
+
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[Redis Bio模块的学习]]></title>
