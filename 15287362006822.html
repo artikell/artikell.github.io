@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  Hello World - artikell
+  Redis 哈希表hash源码解析 - artikell
   
   </title>
   
@@ -100,10 +100,10 @@
       <div class="markdown-body article-wrap">
        <div class="article">
           
-          <h1>Hello World</h1>
+          <h1>Redis 哈希表hash源码解析</h1>
      
         <div class="read-more clearfix">
-          <span class="date">2018/6/9</span>
+          <span class="date">2018/6/12</span>
 
           
            
@@ -118,7 +118,99 @@
       </div><!-- article -->
 
       <div class="article-content">
-      
+      <h2 id="toc_0">前言</h2>
+
+<h2 id="toc_1">相关命令</h2>
+
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>类型</th>
+<th>描述</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>HDEL</td>
+<td>删除</td>
+<td>删除一个或多个哈希表字段</td>
+</tr>
+<tr>
+<td>HEXISTS</td>
+<td>查询</td>
+<td>查看哈希表 key 中，指定的字段是否存在。</td>
+</tr>
+<tr>
+<td>HGET</td>
+<td>查询</td>
+<td>获取存储在哈希表中指定字段的值。</td>
+</tr>
+<tr>
+<td>HGETALL</td>
+<td>查询</td>
+<td>获取在哈希表中指定 key 的所有字段和值</td>
+</tr>
+<tr>
+<td>HINCRBY</td>
+<td>更新</td>
+<td>为哈希表 key 中的指定字段的整数值加上增量 increment 。</td>
+</tr>
+<tr>
+<td>HINCRBYFLOAT</td>
+<td>更新</td>
+<td>为哈希表 key 中的指定字段的浮点数值加上增量 increment 。</td>
+</tr>
+<tr>
+<td>HKEYS</td>
+<td>查询</td>
+<td>获取所有哈希表中的字段</td>
+</tr>
+<tr>
+<td>HLEN</td>
+<td>查询</td>
+<td>获取哈希表中字段的数量</td>
+</tr>
+<tr>
+<td>HMGET</td>
+<td>查询</td>
+<td>获取所有给定字段的值</td>
+</tr>
+<tr>
+<td>HMSET</td>
+<td>更新</td>
+<td>同时将多个 field-value (域-值)对设置到哈希表 key 中。</td>
+</tr>
+<tr>
+<td>HSET</td>
+<td>更新</td>
+<td>将哈希表 key 中的字段 field 的值设为 value 。</td>
+</tr>
+<tr>
+<td>HSETNX</td>
+<td>更新</td>
+<td>只有在字段 field 不存在时，设置哈希表字段的值。</td>
+</tr>
+<tr>
+<td>HVALS</td>
+<td>查询</td>
+<td>获取哈希表中所有值</td>
+</tr>
+<tr>
+<td>HSCAN</td>
+<td>查询</td>
+<td>迭代哈希表中的键值对。</td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="toc_2">核心操作</h2>
+
+<h2 id="toc_3">总结</h2>
+
+<h2 id="toc_4">相关链接</h2>
+
 
     
 
@@ -128,13 +220,16 @@
         <div class="large-6 columns">
         <p class="text-left" style="padding:15px 0px;">
       
-          <a href="15285605915126.html" 
-          title="Previous Post: Redis 淘汰策略解读">&laquo; Redis 淘汰策略解读</a>
+          <a href="15289024592933.html" 
+          title="Previous Post: Redis高频函数解读">&laquo; Redis高频函数解读</a>
       
         </p>
         </div>
         <div class="large-6 columns">
       <p class="text-right" style="padding:15px 0px;">
+      
+          <a  href="15287304018827.html" 
+          title="Next Post: Redis 有序列表zset源码解析">Redis 有序列表zset源码解析 &raquo;</a>
       
       </p>
         </div>
