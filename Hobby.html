@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  Archives - artikell
+  Hobby - artikell
   
   </title>
   
@@ -93,180 +93,107 @@
        
 
  <script type="text/javascript">
-  $(function(){
-    $('#menu_item_archives').addClass('is_active');
-  });
+	$(function(){
+		$('#menu_item_index').addClass('is_active');
+	});
 </script>
 <div class="row">
-  <div class="large-8 medium-8 columns">
-    <div id="archives-page-wrap">
-        <h1>Archives</h1>
-        <div class="markdown-body archives-wrap">
-          
-             
-                <h1>2018</h1>
-            
-            <div class="article">
-              <a class="clearlink" href="15295070676886.html">
-                <h1>相机入门学习</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/20</span>
-                <span>posted in&nbsp;</span> 
+	<div class="large-8 medium-8 columns">
+		<div class="markdown-body home-categories">
+		
+			<div class="article">
+                <a class="clearlink" href="15295070676886.html">
                 
-                    <span class="posted-in"><a href='Hobby.html'>Hobby</a></span>
-                 
-              </div>
-            </div><!-- article -->
+                  <h1>相机入门学习</h1>
+                  <div class="a-content">
+                      
+                      <div class="a-content-text">
+                        
+                        	<h2 id="toc_0">前言</h2>
 
-          
-            
-            <div class="article">
-              <a class="clearlink" href="15289024592933.html">
-                <h1>Redis高频函数解读</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/13</span>
-                
-                 
-              </div>
-            </div><!-- article -->
+<p>去了一趟黄山，被吐槽拍照技术太差，看看是不是需要准备学习一下拍照，同时之后周末多出门走走，健康些。</p>
 
-          
-            
-            <div class="article">
-              <a class="clearlink" href="15287362006822.html">
-                <h1>Redis 哈希表hash源码解析</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/12</span>
-                
-                 
-              </div>
-            </div><!-- article -->
+<h2 id="toc_1">单反和微单的区别</h2>
 
-          
-            
-            <div class="article">
-              <a class="clearlink" href="15287304018827.html">
-                <h1>Redis 有序列表zset源码解析</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/11</span>
-                <span>posted in&nbsp;</span> 
-                
-                    <span class="posted-in"><a href='Redis.html'>Redis</a></span>
-                 
-              </div>
-            </div><!-- article -->
+<p>这个是由于取景方式不同。单反相机的取景是眼平光学取景。光从镜头进入相机，然后从相机的45°反光板垂直往上反射到机顶的五棱镜/五面镜处，然后五棱镜/五面镜把光又垂直水平反射到机背的目镜中。而微单取景是看到的东西先通过传感器成像，然后显示在屏幕上的。一个是纯光学，一个是光学+电学。</p>
 
-          
-            
-            <div class="article">
-              <a class="clearlink" href="15286369556294.html">
-                <h1>Redis常用数据类型介绍、使用场景</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/10</span>
-                <span>posted in&nbsp;</span> 
-                
-                    <span class="posted-in"><a href='Redis.html'>Redis</a></span>
-                 
-              </div>
-            </div><!-- article -->
+<p>等于是，单反所见即所得，而微单是经过了转换。</p>
 
-          
-            
-            <div class="article">
-              <a class="clearlink" href="15286278830553.html">
-                <h1>Redis Bio模块的学习</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/10</span>
-                <span>posted in&nbsp;</span> 
-                
-                    <span class="posted-in"><a href='Redis.html'>Redis</a></span>
-                 
-              </div>
-            </div><!-- article -->
+<h2 id="toc_2">工作原理</h2>
 
-          
-            
-            <div class="article">
-              <a class="clearlink" href="15286261757400.html">
-                <h1>Redis 跳跃表</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/10</span>
-                <span>posted in&nbsp;</span> 
-                
-                    <span class="posted-in"><a href='Redis.html'>Redis</a></span>
-                 
-              </div>
-            </div><!-- article -->
+<h3 id="toc_3">单反</h3>
 
-          
-            
-            <div class="article">
-              <a class="clearlink" href="15286147511534.html">
-                <h1>Redis 对象Object</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/10</span>
-                <span>posted in&nbsp;</span> 
-                
-                    <span class="posted-in"><a href='Redis.html'>Redis</a></span>
-                 
-              </div>
-            </div><!-- article -->
+<p>　　在单反数码相机的工作系统中，光线透过镜头到达反光镜后，折射到上面的对焦屏并结成影像，透过接目镜和五棱镜，可以在观景窗中看到外面的景物。<br/>
+    在DSLR拍摄时，当按下快门钮，反光镜便会往上弹起，感光元件前面的快门幕帘便同时打开，通过镜头的光线便投影到感光原件上感光，然后后反光镜便立即恢复原状，观景窗中再次可以看到影像。<br/>
+　　单镜头反光相机的这种构造，确定了它是完全透过镜头对焦拍摄的，它能使观景窗中所看到的影像和胶片上永远一样，它的取景范围和实际拍摄范围基本上一致，十分有利于直观地取景构图。<br/>
+　　<br/>
+　　单反的聚焦是靠检测反光镜反射后的图像完成的，所以拍摄视频时不能自动对焦，而微单没有这个限制。单反相机在连拍时受限于反光镜的速度，所以连拍速度不如微单<br/>
+　　</p>
 
-          
-            
-            <div class="article">
-              <a class="clearlink" href="15285709665764.html">
-                <h1>Redis 字典扫描算法</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/10</span>
-                <span>posted in&nbsp;</span> 
-                
-                    <span class="posted-in"><a href='Redis.html'>Redis</a></span>
-                 
-              </div>
-            </div><!-- article -->
+<h3 id="toc_4">微单</h3>
 
-          
-            
-            <div class="article">
-              <a class="clearlink" href="15285605915126.html">
-                <h1>Redis 淘汰策略解读</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/10</span>
-                <span>posted in&nbsp;</span> 
-                
-                    <span class="posted-in"><a href='Redis.html'>Redis</a></span>
-                 
-              </div>
-            </div><!-- article -->
+<p>微单相机的取景器是电子的，从镜头进来的光线直接照射到成像元件上，变成电信号后送到取景器中的一个小显示器中取景的，因为没有反光镜和5棱镜，体积大大缩小，所以叫单电（单镜头电子取景）或微单(微型单镜头相机)</p>
 
-          
-            
-            <div class="article">
-              <a class="clearlink" href="15284948308748.html">
-                <h1>Hello World</h1>
-              </a>
-              <div class="read-more clearfix">
-                <span class="date">2018/6/9</span>
-                
-                 
-              </div>
-            </div><!-- article -->
+<h2 id="toc_5">相关差异</h2>
 
-           
-        </div>
-      </div>
-  </div>
+<h3 id="toc_6">对焦差异</h3>
+
+<p>相位差对焦虽然速度不错，但由于测距本身的限制，仅有限定的几个对焦点可供选择，另外由于单反中副反光板分给对焦传感器的光量不到3成，在暗光环境下的对焦效率很低。</p>
+
+<p>由于反差式对焦是对平面像素的数字化分析，精度有保障，且用户可任选焦点，不必局限在相机提供的几个候选自动对焦点上，也有利于提高拍摄的灵活性。但反差式对焦存在耗电大的问题，并且对焦速度相较相位差对焦更慢一些，这对捕捉事物瞬间状态来说是极为不利的。另外感光元件在高感光度情况下存在较多噪点，这会给反差式对焦带来很大的影响。</p>
+
+<h2 id="toc_7">相关参数</h2>
+
+<h3 id="toc_8">全画幅是什么？</h3>
+
+<p>所谓全画幅是针对传统135胶卷的尺寸来说的。以前大部分的数码单反CCD尺寸都比135胶卷的尺寸小，而全画幅数码单反的CCD(或CMOS的感光成像的元件)尺寸和135胶卷的尺寸相同。而CCD尺寸越大，成像质量越高。并且对于已经有传统单反的用户来说，镜头使用不会有换算问题。比如佳能EOS 350D的CCD尺寸大概等于胶卷尺寸的2/3左右，EOS 10D上装100mm的镜头，换算1.6倍率后就变成160mm的镜头了。</p>
+
+<h2 id="toc_9">相关链接</h2>
+
+<ul>
+<li><a href="http://www.nphoto.net/news/2013-05/25/155c4fd6f7d199445.shtml">扫盲：无反和单反到底有什么区别？</a></li>
+</ul>
+
+                        
+                      </div>
+                  </div>
+                </a>
+                <div class="read-more clearfix">
+                  <div class="more-left left">
+                  
+                    <span class="date">2018/6/20</span>
+                    <span>posted in&nbsp;</span> 
+          				  
+          					    <span class="posted-in"><a href='Hobby.html'>Hobby</a></span>
+          				   
+                  </div>
+                  <div class="more-right right">
+                  <span class="comments">
+                      
+
+                       
+                  </span>
+                  </div>
+                </div>
+              </div><!-- article -->
+        
+              
+
+
+			<div class="row">
+			  <div class="large-6 columns">
+			  <p class="text-left" style="padding-top:25px;">
+			   
+			  </p>
+			  </div>
+			  <div class="large-6 columns">
+			<p class="text-right" style="padding-top:25px;">
+			
+			</p>
+			  </div>
+			</div>
+		</div>
+	</div><!-- large 8 -->
 
  <div class="large-4 medium-4 columns">
   <div class="hide-for-small">
