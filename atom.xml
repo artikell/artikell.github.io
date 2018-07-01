@@ -4,7 +4,7 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2018-07-01T17:35:40+08:00</updated>
+  <updated>2018-07-01T17:35:45+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -52,93 +52,89 @@
 
 <h3 id="toc_3">主要结构体</h3>
 
-<p><em>slowlogEntry</em>是慢日志的唯一结构体<br/>
-<code><br/>
-typedef struct slowlogEntry {<br/>
-    robj **argv;        /* 参数列表 */   <br/>
-    int argc;           /* 参数个数 */   <br/>
-    long long id;       /* 唯一编号 */<br/>
-    long long duration; /* 处理时长，毫秒 */<br/>
-    time_t time;        /* 执行时间 */<br/>
-    sds cname;          /* 客户端名称 */<br/>
-    sds peerid;         /* 客户端地址 */<br/>
-} slowlogEntry;<br/>
-</code></p>
+<p><em>slowlogEntry</em>是慢日志的唯一结构体</p>
+
+<pre><code>typedef struct slowlogEntry {
+    robj **argv;        /* 参数列表 */   
+    int argc;           /* 参数个数 */   
+    long long id;       /* 唯一编号 */
+    long long duration; /* 处理时长，毫秒 */
+    time_t time;        /* 执行时间 */
+    sds cname;          /* 客户端名称 */
+    sds peerid;         /* 客户端地址 */
+} slowlogEntry;
+</code></pre>
 
 <h3 id="toc_4">主要函数</h3>
 
-<p><em>slowlogPushEntryIfNeeded</em> 函数是整个慢日志的触发入口：<br/>
-```<br/>
-void slowlogPushEntryIfNeeded(client *c, robj *<em>argv, int argc, long long duration) {<br/>
-    if (server.slowlog_log_slower_than &lt; 0) return; /</em> 未开启慢日志记录 <em>/<br/>
-    if (duration &gt;= server.slowlog_log_slower_than) /</em> 耗时足够 <em>/<br/>
-        /</em> 将慢日志插入列表中 */<br/>
-        listAddNodeHead(server.slowlog,<br/>
-                        slowlogCreateEntry(c,argv,argc,duration));</p>
+<p><em>slowlogPushEntryIfNeeded</em> 函数是整个慢日志的触发入口：</p>
 
-<pre><code>/* 如果超过最长记录，删除最后一个日志元素 */
-while (listLength(server.slowlog) &gt; server.slowlog_max_len)
-    listDelNode(server.slowlog,listLast(server.slowlog));
+<pre><code>void slowlogPushEntryIfNeeded(client *c, robj **argv, int argc, long long duration) {
+    if (server.slowlog_log_slower_than &lt; 0) return; /* 未开启慢日志记录 */
+    if (duration &gt;= server.slowlog_log_slower_than) /* 耗时足够 */
+        /* 将慢日志插入列表中 */
+        listAddNodeHead(server.slowlog,
+                        slowlogCreateEntry(c,argv,argc,duration));
+
+    /* 如果超过最长记录，删除最后一个日志元素 */
+    while (listLength(server.slowlog) &gt; server.slowlog_max_len)
+        listDelNode(server.slowlog,listLast(server.slowlog));
+}
 </code></pre>
 
-<p>}<br/>
-```</p>
+<p><em>slowlogCreateEntry</em>函数，则是创建一个慢日志元素的方法：</p>
 
-<p><em>slowlogCreateEntry</em>函数，则是创建一个慢日志元素的方法：<br/>
-```<br/>
-slowlogEntry *slowlogCreateEntry(client *c, robj **argv, int argc, long long duration) {<br/>
-    slowlogEntry <em>se = zmalloc(sizeof(</em>se));<br/>
-    int j, slargc = argc;</p>
+<pre><code>slowlogEntry *slowlogCreateEntry(client *c, robj **argv, int argc, long long duration) {
+    slowlogEntry *se = zmalloc(sizeof(*se));
+    int j, slargc = argc;
 
-<pre><code>/* 参数不允许超过32个，否则就截取前32个 */
-if (slargc &gt; SLOWLOG_ENTRY_MAX_ARGC) slargc = SLOWLOG_ENTRY_MAX_ARGC;
-se-&gt;argc = slargc;
-se-&gt;argv = zmalloc(sizeof(robj*)*slargc);
-for (j = 0; j &lt; slargc; j++) {
-    /* 如果是最后一个元素时，则添加一个省略号来标记 */
-    if (slargc != argc &amp;&amp; j == slargc-1) {
-        se-&gt;argv[j] = createObject(OBJ_STRING,
-            sdscatprintf(sdsempty(),&quot;... (%d more arguments)&quot;,
-            argc-slargc+1));
-    } else {
-        /* 处理长度大于128的参数信息 */
-        if (argv[j]-&gt;type == OBJ_STRING &amp;&amp;
-            sdsEncodedObject(argv[j]) &amp;&amp;
-            sdslen(argv[j]-&gt;ptr) &gt; SLOWLOG_ENTRY_MAX_STRING)
-        {
-            sds s = sdsnewlen(argv[j]-&gt;ptr, SLOWLOG_ENTRY_MAX_STRING);
-
-            s = sdscatprintf(s,&quot;... (%lu more bytes)&quot;,
-                (unsigned long)
-                sdslen(argv[j]-&gt;ptr) - SLOWLOG_ENTRY_MAX_STRING);
-            se-&gt;argv[j] = createObject(OBJ_STRING,s);
-        } else if (argv[j]-&gt;refcount == OBJ_SHARED_REFCOUNT) {
-            /* 如果是共享的变量，则直接复制 */
-            se-&gt;argv[j] = argv[j];
+    /* 参数不允许超过32个，否则就截取前32个 */
+    if (slargc &gt; SLOWLOG_ENTRY_MAX_ARGC) slargc = SLOWLOG_ENTRY_MAX_ARGC;
+    se-&gt;argc = slargc;
+    se-&gt;argv = zmalloc(sizeof(robj*)*slargc);
+    for (j = 0; j &lt; slargc; j++) {
+        /* 如果是最后一个元素时，则添加一个省略号来标记 */
+        if (slargc != argc &amp;&amp; j == slargc-1) {
+            se-&gt;argv[j] = createObject(OBJ_STRING,
+                sdscatprintf(sdsempty(),&quot;... (%d more arguments)&quot;,
+                argc-slargc+1));
         } else {
-            /* 重新开辟内存 */
-            se-&gt;argv[j] = dupStringObject(argv[j]);
+            /* 处理长度大于128的参数信息 */
+            if (argv[j]-&gt;type == OBJ_STRING &amp;&amp;
+                sdsEncodedObject(argv[j]) &amp;&amp;
+                sdslen(argv[j]-&gt;ptr) &gt; SLOWLOG_ENTRY_MAX_STRING)
+            {
+                sds s = sdsnewlen(argv[j]-&gt;ptr, SLOWLOG_ENTRY_MAX_STRING);
+
+                s = sdscatprintf(s,&quot;... (%lu more bytes)&quot;,
+                    (unsigned long)
+                    sdslen(argv[j]-&gt;ptr) - SLOWLOG_ENTRY_MAX_STRING);
+                se-&gt;argv[j] = createObject(OBJ_STRING,s);
+            } else if (argv[j]-&gt;refcount == OBJ_SHARED_REFCOUNT) {
+                /* 如果是共享的变量，则直接复制 */
+                se-&gt;argv[j] = argv[j];
+            } else {
+                /* 重新开辟内存 */
+                se-&gt;argv[j] = dupStringObject(argv[j]);
+            }
         }
     }
+    se-&gt;time = time(NULL);
+    se-&gt;duration = duration;
+    se-&gt;id = server.slowlog_entry_id++;     /* 自增编号 */
+    se-&gt;peerid = sdsnew(getClientPeerId(c));
+    se-&gt;cname = c-&gt;name ? sdsnew(c-&gt;name-&gt;ptr) : sdsempty();
+    return se;
 }
-se-&gt;time = time(NULL);
-se-&gt;duration = duration;
-se-&gt;id = server.slowlog_entry_id++;     /* 自增编号 */
-se-&gt;peerid = sdsnew(getClientPeerId(c));
-se-&gt;cname = c-&gt;name ? sdsnew(c-&gt;name-&gt;ptr) : sdsempty();
-return se;
 </code></pre>
 
-<p>}<br/>
-```</p>
+<p><em>slowlogReset</em>函数是用于重置慢日志的函数，方法就行遍历并删除节点</p>
 
-<p><em>slowlogReset</em>函数是用于重置慢日志的函数，方法就行遍历并删除节点<br/>
-<code><br/>
-void slowlogReset(void) {<br/>
-    while (listLength(server.slowlog) &gt; 0)<br/>
-        listDelNode(server.slowlog,listLast(server.slowlog));<br/>
-}<br/>
-</code></p>
+<pre><code>void slowlogReset(void) {
+    while (listLength(server.slowlog) &gt; 0)
+        listDelNode(server.slowlog,listLast(server.slowlog));
+}
+</code></pre>
 
 <h3 id="toc_5">结语</h3>
 
