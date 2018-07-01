@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  Redis 字典扫描算法 - artikell
+  Redis 慢日志 - artikell
   
   </title>
   
@@ -102,10 +102,10 @@
       <div class="markdown-body article-wrap">
        <div class="article">
           
-          <h1>Redis 字典扫描算法</h1>
+          <h1>Redis 慢日志</h1>
      
         <div class="read-more clearfix">
-          <span class="date">2018/6/10</span>
+          <span class="date">2018/7/1</span>
 
           <span>posted in&nbsp;</span> 
           
@@ -124,75 +124,129 @@
       <div class="article-content">
       <h2 id="toc_0">前言</h2>
 
-<p>字典扫描算法包含了2个特别精巧的位运算算法，2者保证了整个扫描过程即使穿插了重哈希操作也不会顺序混合。</p>
+<p>慢日志是一个比较简短的模块，先来看看</p>
 
-<h2 id="toc_1">问题一：反转一个数</h2>
+<h2 id="toc_1">慢日志条件</h2>
 
-<p>如何快速反转一个数，正常往往都是<em>O(n)</em>的算法，虽然数字正常不会超过64位，但是，<em>Redis</em>使用了更加位运算将其复杂度减低至了<em>O(logn)</em>。</p>
+<p>说的慢日志，我们可以先看看call调用函数的flags分类：</p>
 
-<p>首先，考虑对于一个二进制数：11010100(212)，如何进行反转？</p>
-
-<p>第一次反转，反转4位：</p>
-
-<pre><code>mask = 0000 1111
-1101 0100 &gt;&gt; 4 &amp; 0000 1111 = 0000 1101
-1101 0100 &lt;&lt; 4 &amp; 1111 0000 = 0100 0000
-0000 1101 | 0100 0000 = 0100 1101
+<pre><code>#define CMD_CALL_NONE 0
+#define CMD_CALL_SLOWLOG (1&lt;&lt;0)
+#define CMD_CALL_STATS (1&lt;&lt;1)
+#define CMD_CALL_PROPAGATE_AOF (1&lt;&lt;2)
+#define CMD_CALL_PROPAGATE_REPL (1&lt;&lt;3)
+#define CMD_CALL_PROPAGATE (CMD_CALL_PROPAGATE_AOF|CMD_CALL_PROPAGATE_REPL)
+#define CMD_CALL_FULL (CMD_CALL_SLOWLOG | CMD_CALL_STATS | CMD_CALL_PROPAGATE)
 </code></pre>
 
-<p>第二次反转，反转2位：</p>
+<p>包括四类：添加慢日志、进入命令统计、AOF传播和REPL传播<br/>
+正常命令都会包含所有<em>flags</em>，所以默认会进行慢日志统计。</p>
 
-<pre><code>mask = 0000 1111 ^ 0011 1100  = 0011 0011
-0100 1101 &gt;&gt; 2 &amp; 0011 0011 = 0001 0011
-0100 1101 &lt;&lt; 2 &amp; 1100 1100 = 0000 0100
-0001 0011 | 0000 0100 = 0001 0111
+<pre><code>    if (flags &amp; CMD_CALL_SLOWLOG &amp;&amp; c-&gt;cmd-&gt;proc != execCommand) {  // 慢日志写入
+        char *latency_event = (c-&gt;cmd-&gt;flags &amp; CMD_FAST) ?
+                              &quot;fast-command&quot; : &quot;command&quot;;
+        latencyAddSampleIfNeeded(latency_event,duration/1000);
+        slowlogPushEntryIfNeeded(c,c-&gt;argv,c-&gt;argc,duration);
+    }
 </code></pre>
 
-<p>第三次反转，反转1位：</p>
+<p>慢日志入口的判断就比较简单，判断是否有标记以及命令是否为<em>execCommand</em>，事务处理不计入统计。</p>
 
-<pre><code>mask = 0110 0110 ^ 0011 0011  = 0101 0101
-0001 0111 &gt;&gt; 1 &amp; 0101 0101 = 0000 0001
-0001 0111 &lt;&lt; 1 &amp; 1010 1010 = 0010 1010
-0000 0001 | 0010 1010 = 0010 1011
+<h2 id="toc_2">慢日志源码剖析</h2>
+
+<h3 id="toc_3">主要结构体</h3>
+
+<p><em>slowlogEntry</em>是慢日志的唯一结构体<br/>
+<code><br/>
+typedef struct slowlogEntry {<br/>
+    robj **argv;        /* 参数列表 */   <br/>
+    int argc;           /* 参数个数 */   <br/>
+    long long id;       /* 唯一编号 */<br/>
+    long long duration; /* 处理时长，毫秒 */<br/>
+    time_t time;        /* 执行时间 */<br/>
+    sds cname;          /* 客户端名称 */<br/>
+    sds peerid;         /* 客户端地址 */<br/>
+} slowlogEntry;<br/>
+</code></p>
+
+<h3 id="toc_4">主要函数</h3>
+
+<p><em>slowlogPushEntryIfNeeded</em> 函数是整个慢日志的触发入口：<br/>
+```<br/>
+void slowlogPushEntryIfNeeded(client *c, robj *<em>argv, int argc, long long duration) {<br/>
+    if (server.slowlog_log_slower_than &lt; 0) return; /</em> 未开启慢日志记录 <em>/<br/>
+    if (duration &gt;= server.slowlog_log_slower_than) /</em> 耗时足够 <em>/<br/>
+        /</em> 将慢日志插入列表中 */<br/>
+        listAddNodeHead(server.slowlog,<br/>
+                        slowlogCreateEntry(c,argv,argc,duration));</p>
+
+<pre><code>/* 如果超过最长记录，删除最后一个日志元素 */
+while (listLength(server.slowlog) &gt; server.slowlog_max_len)
+    listDelNode(server.slowlog,listLast(server.slowlog));
 </code></pre>
 
-<p>其实可以发现关键的点就是<em>mask</em>的生成，规律如下：</p>
+<p>}<br/>
+```</p>
 
-<pre><code>1. 0000 1111
-2. 0011 0011
-3. 0101 0101
+<p><em>slowlogCreateEntry</em>函数，则是创建一个慢日志元素的方法：<br/>
+```<br/>
+slowlogEntry *slowlogCreateEntry(client *c, robj **argv, int argc, long long duration) {<br/>
+    slowlogEntry <em>se = zmalloc(sizeof(</em>se));<br/>
+    int j, slargc = argc;</p>
+
+<pre><code>/* 参数不允许超过32个，否则就截取前32个 */
+if (slargc &gt; SLOWLOG_ENTRY_MAX_ARGC) slargc = SLOWLOG_ENTRY_MAX_ARGC;
+se-&gt;argc = slargc;
+se-&gt;argv = zmalloc(sizeof(robj*)*slargc);
+for (j = 0; j &lt; slargc; j++) {
+    /* 如果是最后一个元素时，则添加一个省略号来标记 */
+    if (slargc != argc &amp;&amp; j == slargc-1) {
+        se-&gt;argv[j] = createObject(OBJ_STRING,
+            sdscatprintf(sdsempty(),&quot;... (%d more arguments)&quot;,
+            argc-slargc+1));
+    } else {
+        /* 处理长度大于128的参数信息 */
+        if (argv[j]-&gt;type == OBJ_STRING &amp;&amp;
+            sdsEncodedObject(argv[j]) &amp;&amp;
+            sdslen(argv[j]-&gt;ptr) &gt; SLOWLOG_ENTRY_MAX_STRING)
+        {
+            sds s = sdsnewlen(argv[j]-&gt;ptr, SLOWLOG_ENTRY_MAX_STRING);
+
+            s = sdscatprintf(s,&quot;... (%lu more bytes)&quot;,
+                (unsigned long)
+                sdslen(argv[j]-&gt;ptr) - SLOWLOG_ENTRY_MAX_STRING);
+            se-&gt;argv[j] = createObject(OBJ_STRING,s);
+        } else if (argv[j]-&gt;refcount == OBJ_SHARED_REFCOUNT) {
+            /* 如果是共享的变量，则直接复制 */
+            se-&gt;argv[j] = argv[j];
+        } else {
+            /* 重新开辟内存 */
+            se-&gt;argv[j] = dupStringObject(argv[j]);
+        }
+    }
+}
+se-&gt;time = time(NULL);
+se-&gt;duration = duration;
+se-&gt;id = server.slowlog_entry_id++;     /* 自增编号 */
+se-&gt;peerid = sdsnew(getClientPeerId(c));
+se-&gt;cname = c-&gt;name ? sdsnew(c-&gt;name-&gt;ptr) : sdsempty();
+return se;
 </code></pre>
 
-<p>通过位运算来反转二进制数。</p>
+<p>}<br/>
+```</p>
 
-<h2 id="toc_2">问题二：遍历变长字典</h2>
+<p><em>slowlogReset</em>函数是用于重置慢日志的函数，方法就行遍历并删除节点<br/>
+<code><br/>
+void slowlogReset(void) {<br/>
+    while (listLength(server.slowlog) &gt; 0)<br/>
+        listDelNode(server.slowlog,listLast(server.slowlog));<br/>
+}<br/>
+</code></p>
 
-<p>答案是：从高位遍历到低位。</p>
+<h3 id="toc_5">结语</h3>
 
-<p>遍历的情况分为3种：未进行重哈希、扩大字典、缩小字典。对于未进行重哈希的情况就不进行描述。</p>
-
-<h3 id="toc_3">优点</h3>
-
-<ol>
-<li>提供键空间的遍历操作，支持游标，复杂度O(1), 整体遍历一遍只需要O(N)；</li>
-<li>提供结果模式匹配；</li>
-<li>支持一次返回的数据条数设置，但仅仅是个hints，有时候返回的会多；</li>
-<li>弱状态，所有状态只需要客户端需要维护一个游标；</li>
-</ol>
-
-<h3 id="toc_4">缺点</h3>
-
-<ol>
-<li>无法提供完整的快照遍历，也就是中间如果有数据修改，可能有些涉及改动的数据遍历不到；</li>
-<li>每次返回的数据条数不一定，极度依赖内部实现；</li>
-<li>返回的数据可能有重复，应用层必须能够处理重入逻辑；</li>
-</ol>
-
-<h2 id="toc_5">相关链接</h2>
-
-<ul>
-<li><a href="http://chenzhenianqing.com/articles/1090.html">Redis Scan迭代器遍历操作原理</a></li>
-</ul>
+<p>看看比较简单的慢日志模块而已。</p>
 
 
     
@@ -203,16 +257,13 @@
         <div class="large-6 columns">
         <p class="text-left" style="padding:15px 0px;">
       
-          <a href="15286147511534.html" 
-          title="Previous Post: Redis 对象Object">&laquo; Redis 对象Object</a>
-      
         </p>
         </div>
         <div class="large-6 columns">
       <p class="text-right" style="padding:15px 0px;">
       
-          <a  href="15285605915126.html" 
-          title="Next Post: Redis 淘汰策略解读">Redis 淘汰策略解读 &raquo;</a>
+          <a  href="15298493212536.html" 
+          title="Next Post: Redis启动过程分析">Redis启动过程分析 &raquo;</a>
       
       </p>
         </div>

@@ -102,6 +102,248 @@
 		<div class="markdown-body home-categories">
 		
 			<div class="article">
+                <a class="clearlink" href="15304363559324.html">
+                
+                  <h1>Redis 慢日志</h1>
+                  <div class="a-content">
+                      
+                      <div class="a-content-text">
+                        
+                        	<h2 id="toc_0">前言</h2>
+
+<p>慢日志是一个比较简短的模块，先来看看</p>
+
+<h2 id="toc_1">慢日志条件</h2>
+
+<p>说的慢日志，我们可以先看看call调用函数的flags分类：</p>
+
+<pre><code>#define CMD_CALL_NONE 0
+#define CMD_CALL_SLOWLOG (1&lt;&lt;0)
+#define CMD_CALL_STATS (1&lt;&lt;1)
+#define CMD_CALL_PROPAGATE_AOF (1&lt;&lt;2)
+#define CMD_CALL_PROPAGATE_REPL (1&lt;&lt;3)
+#define CMD_CALL_PROPAGATE (CMD_CALL_PROPAGATE_AOF|CMD_CALL_PROPAGATE_REPL)
+#define CMD_CALL_FULL (CMD_CALL_SLOWLOG | CMD_CALL_STATS | CMD_CALL_PROPAGATE)
+</code></pre>
+
+<p>包括四类：添加慢日志、进入命令统计、AOF传播和REPL传播<br/>
+正常命令都会包含所有<em>flags</em>，所以默认会进行慢日志统计。</p>
+
+<pre><code>    if (flags &amp; CMD_CALL_SLOWLOG &amp;&amp; c-&gt;cmd-&gt;proc != execCommand) {  // 慢日志写入
+        char *latency_event = (c-&gt;cmd-&gt;flags &amp; CMD_FAST) ?
+                              &quot;fast-command&quot; : &quot;command&quot;;
+        latencyAddSampleIfNeeded(latency_event,duration/1000);
+        slowlogPushEntryIfNeeded(c,c-&gt;argv,c-&gt;argc,duration);
+    }
+</code></pre>
+
+<p>慢日志入口的判断就比较简单，判断是否有标记以及命令是否为<em>execCommand</em>，事务处理不计入统计。</p>
+
+<h2 id="toc_2">慢日志源码剖析</h2>
+
+<h3 id="toc_3">主要结构体</h3>
+
+<p><em>slowlogEntry</em>是慢日志的唯一结构体<br/>
+<code><br/>
+typedef struct slowlogEntry {<br/>
+    robj **argv;        /* 参数列表 */   <br/>
+    int argc;           /* 参数个数 */   <br/>
+    long long id;       /* 唯一编号 */<br/>
+    long long duration; /* 处理时长，毫秒 */<br/>
+    time_t time;        /* 执行时间 */<br/>
+    sds cname;          /* 客户端名称 */<br/>
+    sds peerid;         /* 客户端地址 */<br/>
+} slowlogEntry;<br/>
+</code></p>
+
+<h3 id="toc_4">主要函数</h3>
+
+<p><em>slowlogPushEntryIfNeeded</em> 函数是整个慢日志的触发入口：<br/>
+```<br/>
+void slowlogPushEntryIfNeeded(client *c, robj *<em>argv, int argc, long long duration) {<br/>
+    if (server.slowlog_log_slower_than &lt; 0) return; /</em> 未开启慢日志记录 <em>/<br/>
+    if (duration &gt;= server.slowlog_log_slower_than) /</em> 耗时足够 <em>/<br/>
+        /</em> 将慢日志插入列表中 */<br/>
+        listAddNodeHead(server.slowlog,<br/>
+                        slowlogCreateEntry(c,argv,argc,duration));</p>
+
+<pre><code>/* 如果超过最长记录，删除最后一个日志元素 */
+while (listLength(server.slowlog) &gt; server.slowlog_max_len)
+    listDelNode(server.slowlog,listLast(server.slowlog));
+</code></pre>
+
+<p>}<br/>
+```</p>
+
+<p><em>slowlogCreateEntry</em>函数，则是创建一个慢日志元素的方法：<br/>
+```<br/>
+slowlogEntry *slowlogCreateEntry(client *c, robj **argv, int argc, long long duration) {<br/>
+    slowlogEntry <em>se = zmalloc(sizeof(</em>se));<br/>
+    int j, slargc = argc;</p>
+
+<pre><code>/* 参数不允许超过32个，否则就截取前32个 */
+if (slargc &gt; SLOWLOG_ENTRY_MAX_ARGC) slargc = SLOWLOG_ENTRY_MAX_ARGC;
+se-&gt;argc = slargc;
+se-&gt;argv = zmalloc(sizeof(robj*)*slargc);
+for (j = 0; j &lt; slargc; j++) {
+    /* 如果是最后一个元素时，则添加一个省略号来标记 */
+    if (slargc != argc &amp;&amp; j == slargc-1) {
+        se-&gt;argv[j] = createObject(OBJ_STRING,
+            sdscatprintf(sdsempty(),&quot;... (%d more arguments)&quot;,
+            argc-slargc+1));
+    } else {
+        /* 处理长度大于128的参数信息 */
+        if (argv[j]-&gt;type == OBJ_STRING &amp;&amp;
+            sdsEncodedObject(argv[j]) &amp;&amp;
+            sdslen(argv[j]-&gt;ptr) &gt; SLOWLOG_ENTRY_MAX_STRING)
+        {
+            sds s = sdsnewlen(argv[j]-&gt;ptr, SLOWLOG_ENTRY_MAX_STRING);
+
+            s = sdscatprintf(s,&quot;... (%lu more bytes)&quot;,
+                (unsigned long)
+                sdslen(argv[j]-&gt;ptr) - SLOWLOG_ENTRY_MAX_STRING);
+            se-&gt;argv[j] = createObject(OBJ_STRING,s);
+        } else if (argv[j]-&gt;refcount == OBJ_SHARED_REFCOUNT) {
+            /* 如果是共享的变量，则直接复制 */
+            se-&gt;argv[j] = argv[j];
+        } else {
+            /* 重新开辟内存 */
+            se-&gt;argv[j] = dupStringObject(argv[j]);
+        }
+    }
+}
+se-&gt;time = time(NULL);
+se-&gt;duration = duration;
+se-&gt;id = server.slowlog_entry_id++;     /* 自增编号 */
+se-&gt;peerid = sdsnew(getClientPeerId(c));
+se-&gt;cname = c-&gt;name ? sdsnew(c-&gt;name-&gt;ptr) : sdsempty();
+return se;
+</code></pre>
+
+<p>}<br/>
+```</p>
+
+<p><em>slowlogReset</em>函数是用于重置慢日志的函数，方法就行遍历并删除节点<br/>
+<code><br/>
+void slowlogReset(void) {<br/>
+    while (listLength(server.slowlog) &gt; 0)<br/>
+        listDelNode(server.slowlog,listLast(server.slowlog));<br/>
+}<br/>
+</code></p>
+
+<h3 id="toc_5">结语</h3>
+
+<p>看看比较简单的慢日志模块而已。</p>
+
+                        
+                      </div>
+                  </div>
+                </a>
+                <div class="read-more clearfix">
+                  <div class="more-left left">
+                  
+                    <span class="date">2018/7/1</span>
+                    <span>posted in&nbsp;</span> 
+          				  
+          					    <span class="posted-in"><a href='Redis.html'>Redis</a></span>
+          				   
+                  </div>
+                  <div class="more-right right">
+                  <span class="comments">
+                      
+
+                       
+                  </span>
+                  </div>
+                </div>
+              </div><!-- article -->
+        
+			<div class="article">
+                <a class="clearlink" href="15298493212536.html">
+                
+                  <h1>Redis启动过程分析</h1>
+                  <div class="a-content">
+                      
+                      <div class="a-content-text">
+                        
+                        	<h2 id="toc_0">前言</h2>
+
+<p>一个优秀的软件都有一个优秀的启动过程来保证整个流程的高可用性。</p>
+
+<h2 id="toc_1">Redis的各个模式</h2>
+
+<p>要说起redis本身的启动的话，就要先区分redis本身的3个模式：</p>
+
+<ol>
+<li>主从模式</li>
+<li>哨兵模式</li>
+<li>集群模式</li>
+</ol>
+
+<h3 id="toc_2">主从模式</h3>
+
+<ol>
+<li><p>redis的复制功能是支持多个数据库之间的数据同步。一类是主数据库（master）一类是从数据库（slave），主数据库可以进行读写操作，当发生写操作的时候自动将数据同步到从数据库，而从数据库一般是只读的，并接收主数据库同步过来的数据，一个主数据库可以有多个从数据库，而一个从数据库只能有一个主数据库。</p></li>
+<li><p>通过redis的复制功能可以很好的实现数据库的读写分离，提高服务器的负载能力。主数据库主要进行写操作，而从数据库负责读操作。</p></li>
+</ol>
+
+<h3 id="toc_3">哨兵模式</h3>
+
+<p>redis的sentinel系统用于管理多个redis服务器，该系统主要执行三个任务：监控、提醒、自动故障转移。</p>
+
+<ol>
+<li>监控（Monitoring）： Redis Sentinel实时监控主服务器和从服务器运行状态，并且实现自动切换。</li>
+<li>提醒（Notification）：当被监控的某个 Redis 服务器出现问题时， Redis Sentinel 可以向系统管理员发送通知， 也可以通过 API 向其他程序发送通知。</li>
+<li>自动故障转移（Automatic failover）： 当一个主服务器不能正常工作时，Redis Sentinel 可以将一个从服务器升级为主服务器， 并对其他从服务器进行配置，让它们使用新的主服务器。当应用程序连接Redis 服务器时， Redis Sentinel会告之新的主服务器地址和端口。</li>
+</ol>
+
+<h3 id="toc_4">集群模式</h3>
+
+<p>redis集群是一个无中心的分布式Redis存储架构，可以在多个节点之间进行数据共享，解决了Redis高可用、可扩展等问题。redis集群提供了以下两个好处</p>
+
+<ol>
+<li>将数据自动切分(split)到多个节点</li>
+<li>当集群中的某一个节点故障时，redis还可以继续处理客户端的请求。</li>
+</ol>
+
+<p>一个 Redis 集群包含 16384 个哈希槽（hash slot），数据库中的每个数据都属于这16384个哈希槽中的一个。集群使用公式 CRC16(key) % 16384 来计算键 key 属于哪个槽。集群中的每一个节点负责处理一部分哈希槽。</p>
+
+<h2 id="toc_5">启动解析</h2>
+
+<h3 id="toc_6">环境初始化</h3>
+
+<h3 id="toc_7">命令获取并处理</h3>
+
+<h2 id="toc_8">相关链接</h2>
+
+<ul>
+<li><a href="https://www.cnblogs.com/davidwang456/p/3539721.html">深入redis内部之redis启动过程之一</a></li>
+</ul>
+
+                        
+                      </div>
+                  </div>
+                </a>
+                <div class="read-more clearfix">
+                  <div class="more-left left">
+                  
+                    <span class="date">2018/6/24</span>
+                    <span>posted in&nbsp;</span> 
+          				  
+          					    <span class="posted-in"><a href='Redis.html'>Redis</a></span>
+          				   
+                  </div>
+                  <div class="more-right right">
+                  <span class="comments">
+                      
+
+                       
+                  </span>
+                  </div>
+                </div>
+              </div><!-- article -->
+        
+			<div class="article">
                 <a class="clearlink" href="15295070676886.html">
                 
                   <h1>相机入门学习</h1>
@@ -1565,6 +1807,18 @@ zset-max-ziplist-value 64
 	      
 		      
 			      <li class="post">
+			        <a href="15304363559324.html">Redis 慢日志</a>
+			      </li>
+		     
+		  
+		      
+			      <li class="post">
+			        <a href="15298493212536.html">Redis启动过程分析</a>
+			      </li>
+		     
+		  
+		      
+			      <li class="post">
 			        <a href="15295070676886.html">相机入门学习</a>
 			      </li>
 		     
@@ -1582,16 +1836,8 @@ zset-max-ziplist-value 64
 		     
 		  
 		      
-			      <li class="post">
-			        <a href="15287304018827.html">Redis 有序列表zset源码解析</a>
-			      </li>
-		     
 		  
 		      
-			      <li class="post">
-			        <a href="15286369556294.html">Redis常用数据类型介绍、使用场景</a>
-			      </li>
-		     
 		  
 		      
 		  
