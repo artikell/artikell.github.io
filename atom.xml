@@ -4,13 +4,128 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2018-07-01T17:35:45+08:00</updated>
+  <updated>2018-07-01T18:19:15+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
     
   </author>
   <generator uri="http://www.mweb.im/">MWeb</generator>
+  
+  <entry>
+    <title type="html"><![CDATA[Redis 耗时记录模块]]></title>
+    <link href="https://artikell.github.io/15304380579995.html"/>
+    <updated>2018-07-01T17:40:57+08:00</updated>
+    <id>https://artikell.github.io/15304380579995.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">前言</h2>
+
+<p>学习一下耗时记录的模块</p>
+
+<h2 id="toc_1">主要结构体</h2>
+
+<p><em>latencySample</em>和<em>latencyTimeSeries</em>构成了整个耗时记录表</p>
+
+<pre><code>struct latencySample {
+    int32_t time; /* 当前时间 */
+    uint32_t latency; /* 耗时信息 */
+};
+
+/* The latency time series for a given event. */
+struct latencyTimeSeries {
+    int idx; /* 当前记录的下标信息 */
+    uint32_t max; /* 当前最大的耗时信息 */
+    struct latencySample samples[LATENCY_TS_LEN]; /* 160条的日志记录 */
+};
+</code></pre>
+
+<p><em>latencyStats</em>结构体则是针对事件的耗时分析</p>
+
+<pre><code>struct latencyStats {
+    uint32_t all_time_high; /* 复位后观察到的最大值 */
+    uint32_t avg;           /* 平均值 */
+    uint32_t min;           /* 最小值 */
+    uint32_t max;           /* 最大值 */
+    uint32_t mad;           /* 平均绝对离差 */
+    uint32_t samples;       /* 实例数 */
+    time_t period;          /* 经过的时间，（秒） */
+};
+</code></pre>
+
+<h2 id="toc_2">主要函数</h2>
+
+<p><em>latencyAddSample</em>函数是添加一个记录进耗时队列中</p>
+
+<pre><code>void latencyAddSample(char *event, mstime_t latency) {
+     /* 获取对应事件的耗时对象 */
+    struct latencyTimeSeries *ts = dictFetchValue(server.latency_events,event);
+    time_t now = time(NULL);
+    int prev;
+
+    /* 如果不存在，则分配一个对象 */
+    if (ts == NULL) {
+        ts = zmalloc(sizeof(*ts));
+        ts-&gt;idx = 0;
+        ts-&gt;max = 0;
+        memset(ts-&gt;samples,0,sizeof(ts-&gt;samples));
+        dictAdd(server.latency_events,zstrdup(event),ts);
+    }
+
+    /* 如果耗时过长，则记录下来 */
+    if (latency &gt; ts-&gt;max) ts-&gt;max = latency;
+
+    prev = (ts-&gt;idx + LATENCY_TS_LEN - 1) % LATENCY_TS_LEN; /* 获得前一个记录 */
+    if (ts-&gt;samples[prev].time == now) {    /* 若时间相同且延时更改，则进行替换 */
+        if (latency &gt; ts-&gt;samples[prev].latency)
+            ts-&gt;samples[prev].latency = latency;
+        return;
+    }
+
+    ts-&gt;samples[ts-&gt;idx].time = time(NULL);
+    ts-&gt;samples[ts-&gt;idx].latency = latency;
+
+    ts-&gt;idx++;
+    if (ts-&gt;idx == LATENCY_TS_LEN) ts-&gt;idx = 0;     /* 重复轮回 */
+}
+</code></pre>
+
+<p><em>latencyResetEvent</em> 函数用于重置某个事件的耗时记录</p>
+
+<pre><code>int latencyResetEvent(char *event_to_reset) {
+    dictIterator *di;
+    dictEntry *de;
+    int resets = 0;
+
+    di = dictGetSafeIterator(server.latency_events);     /* 获得一个迭代器 */
+    while((de = dictNext(di)) != NULL) {    /* 迭代整个字典，对符合条件的事件进行删除 */
+        char *event = dictGetKey(de);
+
+        if (event_to_reset == NULL || strcasecmp(event,event_to_reset) == 0) {
+            dictDelete(server.latency_events, event);
+            resets++;
+        }
+    }
+    dictReleaseIterator(di);     /* 删除迭代器 */
+    return resets;
+}
+</code></pre>
+
+<h2 id="toc_3">主要命令</h2>
+
+<p>主要命令有如下四个：</p>
+
+<pre><code> * LATENCY SAMPLES: 指定事件的返回时间延迟采样.
+ * LATENCY LATEST: 返回所有事件类的最新延迟.
+ * LATENCY DOCTOR: 返回实例可读性的实例分析.
+ * LATENCY GRAPH: 提供指定事件的等待时间的ASCII图.
+</code></pre>
+
+<h2 id="toc_4">总结</h2>
+
+<p>看了看延迟记录而已</p>
+
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[Redis 慢日志]]></title>
