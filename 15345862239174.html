@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  Redis常用数据类型介绍、使用场景 - artikell
+  Redis 主流程学习 - artikell
   
   </title>
   
@@ -102,10 +102,10 @@
       <div class="markdown-body article-wrap">
        <div class="article">
           
-          <h1>Redis常用数据类型介绍、使用场景</h1>
+          <h1>Redis 主流程学习</h1>
      
         <div class="read-more clearfix">
-          <span class="date">2018/6/10</span>
+          <span class="date">2018/8/18</span>
 
           <span>posted in&nbsp;</span> 
           
@@ -122,67 +122,105 @@
       </div><!-- article -->
 
       <div class="article-content">
-      <h2 id="toc_0">String（字符串）</h2>
+      <h2 id="toc_0">前言</h2>
 
-<p>String是简单的 key-value 键值对，value 不仅可以是 String，也可以是数字。String在redis内部存储默认就是一个字符串，被redisObject所引用，当遇到incr,decr等操作时会转成数值型进行计算，此时redisObject的encoding字段为int。</p>
+<h2 id="toc_1">主要流程</h2>
 
-<p>String在redis内部存储默认就是一个字符串，被redisObject所引用，当遇到incr,decr等操作时会转成数值型进行计算，此时redisObject的encoding字段为int。</p>
+<h3 id="toc_2">重命名进程</h3>
 
-<h3 id="toc_1">应用场景</h3>
+<h4 id="toc_3">应用场景</h4>
 
-<p>String是最常用的一种数据类型，普通的key/value存储都可以归为此类，这里就不所做解释了。</p>
+<ol>
+<li>标识父子进程名称，防止被误杀</li>
+<li>构造假的进程名及参数，引导非法进入人员到蜜罐系统，取证</li>
+<li>恶意程序、木马会通过&quot;檫除&quot;自己的进程名，使ps的时候显示的是一个无名字的进程，同时删除进程对应磁盘上的文件</li>
+</ol>
 
-<h2 id="toc_2">List（列表）</h2>
+<h4 id="toc_4">通过Linux prctl修改进程名</h4>
 
-<p>Redis列表是简单的字符串列表，可以类比到C++中的std::list，简单的说就是一个链表或者说是一个队列。可以从头部或尾部向Redis列表添加元素。列表的最大长度为2<sup>32</sup> - 1，也即每个列表支持超过40亿个元素。</p>
+<pre><code>prctl(PR_SET_NAME, new_name);
+</code></pre>
 
-<p>Redis list的实现为一个双向链表，即可以支持反向查找和遍历，更方便操作，不过带来了部分额外的内存开销，Redis内部的很多实现，包括发送缓冲队列等也都是用的这个数据结构。</p>
+<p>但是prctl修改的进程名，只能是16个字节(包括&#39;\0&#39;)，同时，过ps -aux 查看，进程名称并没有改变，改变的只是/prco/(PID)/stat和/prco/(PID)/status的值，而/prco/$(PID)/cmdline并没有改变</p>
 
-<h3 id="toc_3">应用场景</h3>
+<h4 id="toc_5">通过修改进程argv[0]修改进程名</h4>
 
-<p>Redis list的应用场景非常多，也是Redis最重要的数据结构之一，比如twitter的关注列表、粉丝列表等都可以用Redis的list结构来实现，再比如有的应用使用Redis的list类型实现一个简单的轻量级消息队列，生产者push，消费者pop/bpop。</p>
+<p>通过代码运行结果可以看出，我们只需要在进程启动时修改argv[0]所指向的内存空间的内容，就可以修改进程名</p>
 
-<h2 id="toc_4">Hash（字典，哈希表）</h2>
+<ol>
+<li>如果新名称比argv[0]的长度小，我们可以直接修改，并把多余的部分请0</li>
+<li>如果新名称比argv[0]长我们需要两步 
+1) 申请新内存保存环境变量信息和argv[1...argc-1]参数信息
+2) 修改argv[0]，将新名称往后到environ的最后一项清0</li>
+</ol>
 
-<p>类似C#中的dict类型或者C++中的hash_map类型。</p>
+<h4 id="toc_6">redis 的做法</h4>
 
-<p>Redis Hash对应Value内部实际就是一个HashMap，实际这里会有2种不同实现，这个Hash的成员比较少时Redis为了节省内存会采用类似一维数组的方式来紧凑存储，而不会采用真正的HashMap结构，对应的value redisObject的encoding为zipmap,当成员数量增大时会自动转成真正的HashMap,此时encoding为ht。</p>
+<h3 id="toc_7">设置语言</h3>
 
-<h3 id="toc_5">应用场景</h3>
+<pre><code>setlocale(LC_COLLATE,&quot;&quot;);
+</code></pre>
 
-<p>假设有多个用户及对应的用户信息，可以用来存储以用户ID为key，将用户信息序列化为比如json格式做为value进行保存。</p>
+<p>设定locale就是设定12大类的locale分类属性，即 12个LC_*。除了这12个变量可以设定以外，为了简便起见，还有两个变量：LC_ALL和LANG。</p>
 
-<h2 id="toc_6">Set（集合）</h2>
+<p>它们之间有一个优先级的关系：LC_ALL &gt; LC_* &gt; LANG</p>
 
-<p>可以理解为一堆值不重复的列表，类似数学领域中的集合概念，且Redis也提供了针对集合的求交集、并集、差集等操作。</p>
+<p>可以这么说，LC_ALL是最上级设定或者强制设定，而LANG是默认设定值。</p>
 
-<p>set 的内部实现是一个 value永远为null的HashMap，实际就是通过计算hash的方式来快速排重的，这也是set能提供判断一个成员是否在集合内的原因。</p>
+<h3 id="toc_8">内存错误处理</h3>
 
-<h3 id="toc_7">应用场景</h3>
+<pre><code>void redisOutOfMemoryHandler(size_t allocation_size) {
+    serverLog(LL_WARNING,&quot;Out Of Memory allocating %zu bytes!&quot;,
+        allocation_size);
+    serverPanic(&quot;Redis aborting for OUT OF MEMORY&quot;);
+}
+</code></pre>
 
-<p>Redis set对外提供的功能与list类似是一个列表的功能，特殊之处在于set是可以自动排重的，当你需要存储一个列表数据，又不希望出现重复数据时，set是一个很好的选择，并且set提供了判断某个成员是否在一个set集合内的重要接口，这个也是list所不能提供的。</p>
+<p>内存oom的时候，则进行日志记录并退出异常</p>
 
-<p>又或者在微博应用中，每个用户关注的人存在一个集合中，就很容易实现求两个人的共同好友功能。</p>
+<h3 id="toc_9">设置随机种子</h3>
 
-<h2 id="toc_8">Sorted Set（有序集合）</h2>
+<pre><code>    srand(time(NULL)^getpid());
+    gettimeofday(&amp;tv,NULL); // 获得当前时间
+    char hashseed[16];
+    getRandomHexChars(hashseed,sizeof(hashseed));   // 设置随机数
+    dictSetHashFunctionSeed((uint8_t*)hashseed);    // 设置哈希函数
+</code></pre>
 
-<p>Redis有序集合类似Redis集合，不同的是增加了一个功能，即集合是有序的。一个有序集合的每个成员带有分数，用于进行排序。</p>
+<p>redis本身哈希方法就是siphash方法。</p>
 
-<p>Redis有序集合添加、删除和测试的时间复杂度均为O(1)(固定时间，无论里面包含的元素集合的数量)。列表的最大长度为2<sup>32-</sup> 1元素(4294967295，超过40亿每个元素的集合)。</p>
+<h3 id="toc_10">检查哨兵模式</h3>
 
-<p>Redis sorted set的内部使用HashMap和跳跃表(SkipList)来保证数据的存储和有序，HashMap里放的是成员到score的映射，而跳跃表里存放的是所有的成员，排序依据是HashMap里存的score,使用跳跃表的结构可以获得比较高的查找效率，并且在实现上比较简单。</p>
+<h3 id="toc_11">初始化基础配置</h3>
 
-<h3 id="toc_9">使用场景</h3>
+<h3 id="toc_12">模块初始化</h3>
 
-<p>Redis sorted set的使用场景与set类似，区别是set不是自动有序的，而sorted set可以通过用户额外提供一个优先级(score)的参数来为成员排序，并且是插入有序的，即自动排序。当你需要一个有序的并且不重复的集合列表，那么可以选择sorted set数据结构，比如twitter 的public timeline可以以发表时间作为score来存储，这样获取时就是自动按时间排好序的。</p>
+<p>当前虽然支持 lua 脚本来作为扩展但更多的只是功能的组合，也就是说从设计上 lua 脚本的方式并不能满足扩展的需求，如我们想加个数据结构或者命令之类。</p>
 
-<p>又比如用户的积分排行榜需求就可以通过有序集合实现。还有上面介绍的使用List实现轻量级的消息队列，其实也可以通过Sorted Set实现有优先级或按权重的队列。</p>
+<h3 id="toc_13">设置相关执行参数</h3>
 
-<h2 id="toc_10">相关链接</h2>
+<h3 id="toc_14">初始化哨兵模式</h3>
+
+<h3 id="toc_15">检查rdb和aof文件</h3>
+
+<h3 id="toc_16">解析参数配置</h3>
+
+<h3 id="toc_17">初始化redis相关配置</h3>
+
+<h3 id="toc_18">检查backlog</h3>
+
+<h3 id="toc_19">加载模块和数据</h3>
+
+<h3 id="toc_20">进入事件模式</h3>
+
+<h2 id="toc_21">相关链接</h2>
 
 <ul>
-<li><a href="https://www.cnblogs.com/lizhenghn/p/5322887.html">Redis常用数据类型介绍、使用场景及其操作命令</a></li>
+<li><a href="https://blog.csdn.net/guodongxiaren/article/details/44747719">https://blog.csdn.net/guodongxiaren/article/details/44747719</a></li>
+<li><a href="http://www.spongeliu.com/415.html">http://www.spongeliu.com/415.html</a></li>
 </ul>
+
+<h2 id="toc_22">总结</h2>
 
 
     
@@ -193,16 +231,13 @@
         <div class="large-6 columns">
         <p class="text-left" style="padding:15px 0px;">
       
-          <a href="15287304018827.html" 
-          title="Previous Post: Redis 有序列表zset源码解析">&laquo; Redis 有序列表zset源码解析</a>
-      
         </p>
         </div>
         <div class="large-6 columns">
       <p class="text-right" style="padding:15px 0px;">
       
-          <a  href="15286278830553.html" 
-          title="Next Post: Redis Bio模块的学习">Redis Bio模块的学习 &raquo;</a>
+          <a  href="15319770094977.html" 
+          title="Next Post: Redis 集群管理学习">Redis 集群管理学习 &raquo;</a>
       
       </p>
         </div>

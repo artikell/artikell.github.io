@@ -4,13 +4,183 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2018-07-01T18:19:15+08:00</updated>
+  <updated>2018-08-19T10:06:01+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
     
   </author>
   <generator uri="http://www.mweb.im/">MWeb</generator>
+  
+  <entry>
+    <title type="html"><![CDATA[Redis 主流程学习]]></title>
+    <link href="https://artikell.github.io/15345862239174.html"/>
+    <updated>2018-08-18T17:57:03+08:00</updated>
+    <id>https://artikell.github.io/15345862239174.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">前言</h2>
+
+<h2 id="toc_1">主要流程</h2>
+
+<h3 id="toc_2">重命名进程</h3>
+
+<h4 id="toc_3">应用场景</h4>
+
+<ol>
+<li>标识父子进程名称，防止被误杀</li>
+<li>构造假的进程名及参数，引导非法进入人员到蜜罐系统，取证</li>
+<li>恶意程序、木马会通过&quot;檫除&quot;自己的进程名，使ps的时候显示的是一个无名字的进程，同时删除进程对应磁盘上的文件</li>
+</ol>
+
+<h4 id="toc_4">通过Linux prctl修改进程名</h4>
+
+<pre><code>prctl(PR_SET_NAME, new_name);
+</code></pre>
+
+<p>但是prctl修改的进程名，只能是16个字节(包括&#39;\0&#39;)，同时，过ps -aux 查看，进程名称并没有改变，改变的只是/prco/(PID)/stat和/prco/(PID)/status的值，而/prco/$(PID)/cmdline并没有改变</p>
+
+<h4 id="toc_5">通过修改进程argv[0]修改进程名</h4>
+
+<p>通过代码运行结果可以看出，我们只需要在进程启动时修改argv[0]所指向的内存空间的内容，就可以修改进程名</p>
+
+<ol>
+<li>如果新名称比argv[0]的长度小，我们可以直接修改，并把多余的部分请0</li>
+<li>如果新名称比argv[0]长我们需要两步 
+1) 申请新内存保存环境变量信息和argv[1...argc-1]参数信息
+2) 修改argv[0]，将新名称往后到environ的最后一项清0</li>
+</ol>
+
+<h4 id="toc_6">redis 的做法</h4>
+
+<h3 id="toc_7">设置语言</h3>
+
+<pre><code>setlocale(LC_COLLATE,&quot;&quot;);
+</code></pre>
+
+<p>设定locale就是设定12大类的locale分类属性，即 12个LC_*。除了这12个变量可以设定以外，为了简便起见，还有两个变量：LC_ALL和LANG。</p>
+
+<p>它们之间有一个优先级的关系：LC_ALL &gt; LC_* &gt; LANG</p>
+
+<p>可以这么说，LC_ALL是最上级设定或者强制设定，而LANG是默认设定值。</p>
+
+<h3 id="toc_8">内存错误处理</h3>
+
+<pre><code>void redisOutOfMemoryHandler(size_t allocation_size) {
+    serverLog(LL_WARNING,&quot;Out Of Memory allocating %zu bytes!&quot;,
+        allocation_size);
+    serverPanic(&quot;Redis aborting for OUT OF MEMORY&quot;);
+}
+</code></pre>
+
+<p>内存oom的时候，则进行日志记录并退出异常</p>
+
+<h3 id="toc_9">设置随机种子</h3>
+
+<pre><code>    srand(time(NULL)^getpid());
+    gettimeofday(&amp;tv,NULL); // 获得当前时间
+    char hashseed[16];
+    getRandomHexChars(hashseed,sizeof(hashseed));   // 设置随机数
+    dictSetHashFunctionSeed((uint8_t*)hashseed);    // 设置哈希函数
+</code></pre>
+
+<p>redis本身哈希方法就是siphash方法。</p>
+
+<h3 id="toc_10">检查哨兵模式</h3>
+
+<h3 id="toc_11">初始化基础配置</h3>
+
+<h3 id="toc_12">模块初始化</h3>
+
+<p>当前虽然支持 lua 脚本来作为扩展但更多的只是功能的组合，也就是说从设计上 lua 脚本的方式并不能满足扩展的需求，如我们想加个数据结构或者命令之类。</p>
+
+<h3 id="toc_13">设置相关执行参数</h3>
+
+<h3 id="toc_14">初始化哨兵模式</h3>
+
+<h3 id="toc_15">检查rdb和aof文件</h3>
+
+<h3 id="toc_16">解析参数配置</h3>
+
+<h3 id="toc_17">初始化redis相关配置</h3>
+
+<h3 id="toc_18">检查backlog</h3>
+
+<h3 id="toc_19">加载模块和数据</h3>
+
+<h3 id="toc_20">进入事件模式</h3>
+
+<h2 id="toc_21">相关链接</h2>
+
+<ul>
+<li><a href="https://blog.csdn.net/guodongxiaren/article/details/44747719">https://blog.csdn.net/guodongxiaren/article/details/44747719</a></li>
+<li><a href="http://www.spongeliu.com/415.html">http://www.spongeliu.com/415.html</a></li>
+</ul>
+
+<h2 id="toc_22">总结</h2>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Redis 集群管理学习]]></title>
+    <link href="https://artikell.github.io/15319770094977.html"/>
+    <updated>2018-07-19T13:10:09+08:00</updated>
+    <id>https://artikell.github.io/15319770094977.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">前言</h2>
+
+<p>Redis集群管理包括哨兵模式、分片、以及主从同步3大块。外部扩展包括codis以及kedis2个项目，顺带zookeeper的集群解决方案。<br/>
+本文主要从主从和分片模块收集并解析。</p>
+
+<h2 id="toc_1">主从同步</h2>
+
+<p>rdb文件发送逻辑<br/>
+backgroundSaveDoneHandlerSocket<br/>
+backgroundSaveDoneHandlerDisk</p>
+
+<pre><code>// replication关闭状态
+#define REPL_STATE_NONE 0 /* No active replication */
+// 必须重新连接主节点
+#define REPL_STATE_CONNECT 1 /* Must connect to master */
+// 处于和主节点正在连接的状态
+#define REPL_STATE_CONNECTING 2 /* Connecting to master */
+/* --- Handshake states, must be ordered --- */
+// 握手状态，有序
+// 等待主节点回复PING命令一个PONG
+#define REPL_STATE_RECEIVE_PONG 3 /* Wait for PING reply */
+// 发送认证命令AUTH给主节点
+#define REPL_STATE_SEND_AUTH 4 /* Send AUTH to master */
+// 设置状态为等待接受认证回复
+#define REPL_STATE_RECEIVE_AUTH 5 /* Wait for AUTH reply */
+// 发送从节点的端口号
+#define REPL_STATE_SEND_PORT 6 /* Send REPLCONF listening-port */
+// 接受一个从节点监听端口号
+#define REPL_STATE_RECEIVE_PORT 7 /* Wait for REPLCONF reply */
+#define REPL_STATE_SEND_IP 8 /* Send REPLCONF ip-address */
+#define REPL_STATE_RECEIVE_IP 9 /* Wait for REPLCONF reply */
+// 发送一个
+#define REPL_STATE_SEND_CAPA 10 /* Send REPLCONF capa */
+#define REPL_STATE_RECEIVE_CAPA 11 /* Wait for REPLCONF reply */
+#define REPL_STATE_SEND_PSYNC 12 /* Send PSYNC */
+// 等待一个PSYNC回复
+#define REPL_STATE_RECEIVE_PSYNC 13 /* Wait for PSYNC reply */
+/* --- End of handshake states --- */
+// 正从主节点接受RDB文件
+#define REPL_STATE_TRANSFER 14 /* Receiving .rdb from master */
+// 和主节点保持连接
+#define REPL_STATE_CONNECTED 15 /* Connected to master */
+</code></pre>
+
+<h2 id="toc_2">问题列表</h2>
+
+<ol>
+<li>repl-diskless-sync 无磁盘复制，优劣势？</li>
+<li>backlog 的功能？</li>
+<li></li>
+</ol>
+
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[Redis 耗时记录模块]]></title>
@@ -191,7 +361,7 @@ struct latencyTimeSeries {
         listAddNodeHead(server.slowlog,
                         slowlogCreateEntry(c,argv,argc,duration));
 
-    /* 如果超过最长记录，删除最后一个日志元素 */
+        
     while (listLength(server.slowlog) &gt; server.slowlog_max_len)
         listDelNode(server.slowlog,listLast(server.slowlog));
 }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  Redis常用数据类型介绍、使用场景 - artikell
+  Redis 集群管理学习 - artikell
   
   </title>
   
@@ -102,10 +102,10 @@
       <div class="markdown-body article-wrap">
        <div class="article">
           
-          <h1>Redis常用数据类型介绍、使用场景</h1>
+          <h1>Redis 集群管理学习</h1>
      
         <div class="read-more clearfix">
-          <span class="date">2018/6/10</span>
+          <span class="date">2018/7/19</span>
 
           <span>posted in&nbsp;</span> 
           
@@ -122,67 +122,57 @@
       </div><!-- article -->
 
       <div class="article-content">
-      <h2 id="toc_0">String（字符串）</h2>
+      <h2 id="toc_0">前言</h2>
 
-<p>String是简单的 key-value 键值对，value 不仅可以是 String，也可以是数字。String在redis内部存储默认就是一个字符串，被redisObject所引用，当遇到incr,decr等操作时会转成数值型进行计算，此时redisObject的encoding字段为int。</p>
+<p>Redis集群管理包括哨兵模式、分片、以及主从同步3大块。外部扩展包括codis以及kedis2个项目，顺带zookeeper的集群解决方案。<br/>
+本文主要从主从和分片模块收集并解析。</p>
 
-<p>String在redis内部存储默认就是一个字符串，被redisObject所引用，当遇到incr,decr等操作时会转成数值型进行计算，此时redisObject的encoding字段为int。</p>
+<h2 id="toc_1">主从同步</h2>
 
-<h3 id="toc_1">应用场景</h3>
+<p>rdb文件发送逻辑<br/>
+backgroundSaveDoneHandlerSocket<br/>
+backgroundSaveDoneHandlerDisk</p>
 
-<p>String是最常用的一种数据类型，普通的key/value存储都可以归为此类，这里就不所做解释了。</p>
+<pre><code>// replication关闭状态
+#define REPL_STATE_NONE 0 /* No active replication */
+// 必须重新连接主节点
+#define REPL_STATE_CONNECT 1 /* Must connect to master */
+// 处于和主节点正在连接的状态
+#define REPL_STATE_CONNECTING 2 /* Connecting to master */
+/* --- Handshake states, must be ordered --- */
+// 握手状态，有序
+// 等待主节点回复PING命令一个PONG
+#define REPL_STATE_RECEIVE_PONG 3 /* Wait for PING reply */
+// 发送认证命令AUTH给主节点
+#define REPL_STATE_SEND_AUTH 4 /* Send AUTH to master */
+// 设置状态为等待接受认证回复
+#define REPL_STATE_RECEIVE_AUTH 5 /* Wait for AUTH reply */
+// 发送从节点的端口号
+#define REPL_STATE_SEND_PORT 6 /* Send REPLCONF listening-port */
+// 接受一个从节点监听端口号
+#define REPL_STATE_RECEIVE_PORT 7 /* Wait for REPLCONF reply */
+#define REPL_STATE_SEND_IP 8 /* Send REPLCONF ip-address */
+#define REPL_STATE_RECEIVE_IP 9 /* Wait for REPLCONF reply */
+// 发送一个
+#define REPL_STATE_SEND_CAPA 10 /* Send REPLCONF capa */
+#define REPL_STATE_RECEIVE_CAPA 11 /* Wait for REPLCONF reply */
+#define REPL_STATE_SEND_PSYNC 12 /* Send PSYNC */
+// 等待一个PSYNC回复
+#define REPL_STATE_RECEIVE_PSYNC 13 /* Wait for PSYNC reply */
+/* --- End of handshake states --- */
+// 正从主节点接受RDB文件
+#define REPL_STATE_TRANSFER 14 /* Receiving .rdb from master */
+// 和主节点保持连接
+#define REPL_STATE_CONNECTED 15 /* Connected to master */
+</code></pre>
 
-<h2 id="toc_2">List（列表）</h2>
+<h2 id="toc_2">问题列表</h2>
 
-<p>Redis列表是简单的字符串列表，可以类比到C++中的std::list，简单的说就是一个链表或者说是一个队列。可以从头部或尾部向Redis列表添加元素。列表的最大长度为2<sup>32</sup> - 1，也即每个列表支持超过40亿个元素。</p>
-
-<p>Redis list的实现为一个双向链表，即可以支持反向查找和遍历，更方便操作，不过带来了部分额外的内存开销，Redis内部的很多实现，包括发送缓冲队列等也都是用的这个数据结构。</p>
-
-<h3 id="toc_3">应用场景</h3>
-
-<p>Redis list的应用场景非常多，也是Redis最重要的数据结构之一，比如twitter的关注列表、粉丝列表等都可以用Redis的list结构来实现，再比如有的应用使用Redis的list类型实现一个简单的轻量级消息队列，生产者push，消费者pop/bpop。</p>
-
-<h2 id="toc_4">Hash（字典，哈希表）</h2>
-
-<p>类似C#中的dict类型或者C++中的hash_map类型。</p>
-
-<p>Redis Hash对应Value内部实际就是一个HashMap，实际这里会有2种不同实现，这个Hash的成员比较少时Redis为了节省内存会采用类似一维数组的方式来紧凑存储，而不会采用真正的HashMap结构，对应的value redisObject的encoding为zipmap,当成员数量增大时会自动转成真正的HashMap,此时encoding为ht。</p>
-
-<h3 id="toc_5">应用场景</h3>
-
-<p>假设有多个用户及对应的用户信息，可以用来存储以用户ID为key，将用户信息序列化为比如json格式做为value进行保存。</p>
-
-<h2 id="toc_6">Set（集合）</h2>
-
-<p>可以理解为一堆值不重复的列表，类似数学领域中的集合概念，且Redis也提供了针对集合的求交集、并集、差集等操作。</p>
-
-<p>set 的内部实现是一个 value永远为null的HashMap，实际就是通过计算hash的方式来快速排重的，这也是set能提供判断一个成员是否在集合内的原因。</p>
-
-<h3 id="toc_7">应用场景</h3>
-
-<p>Redis set对外提供的功能与list类似是一个列表的功能，特殊之处在于set是可以自动排重的，当你需要存储一个列表数据，又不希望出现重复数据时，set是一个很好的选择，并且set提供了判断某个成员是否在一个set集合内的重要接口，这个也是list所不能提供的。</p>
-
-<p>又或者在微博应用中，每个用户关注的人存在一个集合中，就很容易实现求两个人的共同好友功能。</p>
-
-<h2 id="toc_8">Sorted Set（有序集合）</h2>
-
-<p>Redis有序集合类似Redis集合，不同的是增加了一个功能，即集合是有序的。一个有序集合的每个成员带有分数，用于进行排序。</p>
-
-<p>Redis有序集合添加、删除和测试的时间复杂度均为O(1)(固定时间，无论里面包含的元素集合的数量)。列表的最大长度为2<sup>32-</sup> 1元素(4294967295，超过40亿每个元素的集合)。</p>
-
-<p>Redis sorted set的内部使用HashMap和跳跃表(SkipList)来保证数据的存储和有序，HashMap里放的是成员到score的映射，而跳跃表里存放的是所有的成员，排序依据是HashMap里存的score,使用跳跃表的结构可以获得比较高的查找效率，并且在实现上比较简单。</p>
-
-<h3 id="toc_9">使用场景</h3>
-
-<p>Redis sorted set的使用场景与set类似，区别是set不是自动有序的，而sorted set可以通过用户额外提供一个优先级(score)的参数来为成员排序，并且是插入有序的，即自动排序。当你需要一个有序的并且不重复的集合列表，那么可以选择sorted set数据结构，比如twitter 的public timeline可以以发表时间作为score来存储，这样获取时就是自动按时间排好序的。</p>
-
-<p>又比如用户的积分排行榜需求就可以通过有序集合实现。还有上面介绍的使用List实现轻量级的消息队列，其实也可以通过Sorted Set实现有优先级或按权重的队列。</p>
-
-<h2 id="toc_10">相关链接</h2>
-
-<ul>
-<li><a href="https://www.cnblogs.com/lizhenghn/p/5322887.html">Redis常用数据类型介绍、使用场景及其操作命令</a></li>
-</ul>
+<ol>
+<li>repl-diskless-sync 无磁盘复制，优劣势？</li>
+<li>backlog 的功能？</li>
+<li></li>
+</ol>
 
 
     
@@ -193,16 +183,16 @@
         <div class="large-6 columns">
         <p class="text-left" style="padding:15px 0px;">
       
-          <a href="15287304018827.html" 
-          title="Previous Post: Redis 有序列表zset源码解析">&laquo; Redis 有序列表zset源码解析</a>
+          <a href="15345862239174.html" 
+          title="Previous Post: Redis 主流程学习">&laquo; Redis 主流程学习</a>
       
         </p>
         </div>
         <div class="large-6 columns">
       <p class="text-right" style="padding:15px 0px;">
       
-          <a  href="15286278830553.html" 
-          title="Next Post: Redis Bio模块的学习">Redis Bio模块的学习 &raquo;</a>
+          <a  href="15304380579995.html" 
+          title="Next Post: Redis 耗时记录模块">Redis 耗时记录模块 &raquo;</a>
       
       </p>
         </div>
