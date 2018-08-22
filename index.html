@@ -178,7 +178,13 @@
 
 <h3 id="toc_10">检查哨兵模式</h3>
 
+<p>主要检查2个参数：<code>redis-sentinel</code> 和 <code>--sentinel</code>。</p>
+
 <h3 id="toc_11">初始化基础配置</h3>
+
+<p>本次初始化主要是对一些属性赋予默认值，以及初始化命令列表。<br/>
+其中，可以发现redis默认设置了三种保存频率：每小时修改1次、每5分钟修改100次、每分钟修改10000次。<br/>
+这个会在定时任务中不断检查是否需要持久化。</p>
 
 <h3 id="toc_12">模块初始化</h3>
 
@@ -189,6 +195,16 @@
 <h3 id="toc_14">初始化哨兵模式</h3>
 
 <h3 id="toc_15">检查rdb和aof文件</h3>
+
+<pre><code>    if (strstr(argv[0],&quot;redis-check-rdb&quot;) != NULL)  // 优先检查rdb文件
+        redis_check_rdb_main(argc,argv,NULL);   // 检查rdb文件
+    else if (strstr(argv[0],&quot;redis-check-aof&quot;) != NULL)
+        redis_check_aof_main(argc,argv);    // 检查aof文件
+</code></pre>
+
+<p>指明2个文件<code>redis-check-rdb</code>和<code>redis-check-aof</code>和<code>redis</code>是同一个二进制文件。</p>
+
+<p>其中，<code>redis-check-aof</code>命令是支持对aof文件进行修复。</p>
 
 <h3 id="toc_16">解析参数配置</h3>
 
@@ -205,6 +221,7 @@
 <ul>
 <li><a href="https://blog.csdn.net/guodongxiaren/article/details/44747719">https://blog.csdn.net/guodongxiaren/article/details/44747719</a></li>
 <li><a href="http://www.spongeliu.com/415.html">http://www.spongeliu.com/415.html</a></li>
+<li><a href="https://github.com/huangz1990/blog/blob/master/diary/2013/how-redis-fix-invalid-aof-file.rst">https://github.com/huangz1990/blog/blob/master/diary/2013/how-redis-fix-invalid-aof-file.rst</a></li>
 </ul>
 
 <h2 id="toc_22">总结</h2>
