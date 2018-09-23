@@ -111,120 +111,251 @@
                         
                         	<h2 id="toc_0">前言</h2>
 
-<h2 id="toc_1">主要流程</h2>
+<p>本文主要介绍Redis主流程的过程，包括<em>启动初始化，事件，命令处理，异常处理</em>4大块，尽可能覆盖全面。</p>
 
-<h3 id="toc_2">重命名进程</h3>
+<h2 id="toc_1">启动初始化</h2>
 
-<h4 id="toc_3">应用场景</h4>
+<p>启动初始化一般都有3个流程：<em>环境设置、配置解析、模块初始化</em>。三者主要是为了后续持续的运行做准备。</p>
 
-<ol>
-<li>标识父子进程名称，防止被误杀</li>
-<li>构造假的进程名及参数，引导非法进入人员到蜜罐系统，取证</li>
-<li>恶意程序、木马会通过&quot;檫除&quot;自己的进程名，使ps的时候显示的是一个无名字的进程，同时删除进程对应磁盘上的文件</li>
-</ol>
+<h3 id="toc_2">环境设置</h3>
 
-<h4 id="toc_4">通过Linux prctl修改进程名</h4>
+<p>环境设置大部分都是一些与系统相关的设置，例如不同的系统会使用不同的事件模型</p>
 
-<pre><code>prctl(PR_SET_NAME, new_name);
+<table>
+<thead>
+<tr>
+<th>事件模型</th>
+<th>系统</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>Evport</td>
+<td>sun系统</td>
+</tr>
+<tr>
+<td>Epoll</td>
+<td>linux系统</td>
+</tr>
+<tr>
+<td>Kqueue</td>
+<td>unix系统</td>
+</tr>
+<tr>
+<td>Select</td>
+<td>默认</td>
+</tr>
+</tbody>
+</table>
+
+<pre><code>#ifdef HAVE_EVPORT
+#include &quot;ae_evport.c&quot;
+#else
+    #ifdef HAVE_EPOLL
+    #include &quot;ae_epoll.c&quot;
+    #else
+        #ifdef HAVE_KQUEUE
+        #include &quot;ae_kqueue.c&quot;
+        #else
+        #include &quot;ae_select.c&quot;
+        #endif
+    #endif
+#endif
 </code></pre>
 
-<p>但是prctl修改的进程名，只能是16个字节(包括&#39;\0&#39;)，同时，过ps -aux 查看，进程名称并没有改变，改变的只是/prco/(PID)/stat和/prco/(PID)/status的值，而/prco/$(PID)/cmdline并没有改变</p>
+<p>同时还有类似内存池的选择，是zmalloc,还是jmalloc，都是在编译时候设置好。</p>
 
-<h4 id="toc_5">通过修改进程argv[0]修改进程名</h4>
+<p>在启动的时候，能做的事情不多，主要就是：语言环境、标题、随机种子、监督。</p>
 
-<p>通过代码运行结果可以看出，我们只需要在进程启动时修改argv[0]所指向的内存空间的内容，就可以修改进程名</p>
+<h3 id="toc_3">配置解析</h3>
 
-<ol>
-<li>如果新名称比argv[0]的长度小，我们可以直接修改，并把多余的部分请0</li>
-<li>如果新名称比argv[0]长我们需要两步 
-1) 申请新内存保存环境变量信息和argv[1...argc-1]参数信息
-2) 修改argv[0]，将新名称往后到environ的最后一项清0</li>
-</ol>
+<p>配置主要都是从命令行参数列表中获取，而针对一下特殊的参数例如<em>version、help、test-memory</em>就有特殊处理。</p>
 
-<h4 id="toc_6">redis 的做法</h4>
-
-<h3 id="toc_7">设置语言</h3>
-
-<pre><code>setlocale(LC_COLLATE,&quot;&quot;);
-</code></pre>
-
-<p>设定locale就是设定12大类的locale分类属性，即 12个LC_*。除了这12个变量可以设定以外，为了简便起见，还有两个变量：LC_ALL和LANG。</p>
-
-<p>它们之间有一个优先级的关系：LC_ALL &gt; LC_* &gt; LANG</p>
-
-<p>可以这么说，LC_ALL是最上级设定或者强制设定，而LANG是默认设定值。</p>
-
-<h3 id="toc_8">内存错误处理</h3>
-
-<pre><code>void redisOutOfMemoryHandler(size_t allocation_size) {
-    serverLog(LL_WARNING,&quot;Out Of Memory allocating %zu bytes!&quot;,
-        allocation_size);
-    serverPanic(&quot;Redis aborting for OUT OF MEMORY&quot;);
+<pre><code>if (strcmp(argv[1], &quot;-v&quot;) == 0 ||
+    strcmp(argv[1], &quot;--version&quot;) == 0) version();
+if (strcmp(argv[1], &quot;--help&quot;) == 0 ||
+    strcmp(argv[1], &quot;-h&quot;) == 0) usage();
+if (strcmp(argv[1], &quot;--test-memory&quot;) == 0) {
+    if (argc == 3) {
+        memtest(atoi(argv[2]),50);
+        exit(0);
+    } else {
+        fprintf(stderr,&quot;Please specify the amount of memory to test in megabytes.\n&quot;);
+        fprintf(stderr,&quot;Example: ./redis-server --test-memory 4096\n\n&quot;);
+        exit(1);
+    }
 }
 </code></pre>
 
-<p>内存oom的时候，则进行日志记录并退出异常</p>
+<p>配置检查第一个参数，如果不是以双减号开头，则作为配置文件，同时会不全configfile为绝对路径，这样的话，后续debug模式下重启服务可以正常启动。</p>
 
-<h3 id="toc_9">设置随机种子</h3>
-
-<pre><code>    srand(time(NULL)^getpid());
-    gettimeofday(&amp;tv,NULL); // 获得当前时间
-    char hashseed[16];
-    getRandomHexChars(hashseed,sizeof(hashseed));   // 设置随机数
-    dictSetHashFunctionSeed((uint8_t*)hashseed);    // 设置哈希函数
+<pre><code>if (argv[j][0] != &#39;-&#39; || argv[j][1] != &#39;-&#39;) {
+    configfile = argv[j];
+    server.configfile = getAbsolutePath(configfile);
+    /* Replace the config file in server.exec_argv with
+     * its absoulte path. */
+    zfree(server.exec_argv[j]);
+    server.exec_argv[j] = zstrdup(server.configfile);
+    j++;
+}
 </code></pre>
 
-<p>redis本身哈希方法就是siphash方法。</p>
+<p>后续的配置设置，都是以<code>--</code>开头，例如：<code>--port 6379</code>，都作为配置信息。<br/>
+例如： <code>redis-server --port 6379 --save 900 1 --save 300 1</code> ，会被解析为：</p>
 
-<h3 id="toc_10">检查哨兵模式</h3>
-
-<p>主要检查2个参数：<code>redis-sentinel</code> 和 <code>--sentinel</code>。</p>
-
-<h3 id="toc_11">初始化基础配置</h3>
-
-<p>本次初始化主要是对一些属性赋予默认值，以及初始化命令列表。<br/>
-其中，可以发现redis默认设置了三种保存频率：每小时修改1次、每5分钟修改100次、每分钟修改10000次。<br/>
-这个会在定时任务中不断检查是否需要持久化。</p>
-
-<h3 id="toc_12">模块初始化</h3>
-
-<p>当前虽然支持 lua 脚本来作为扩展但更多的只是功能的组合，也就是说从设计上 lua 脚本的方式并不能满足扩展的需求，如我们想加个数据结构或者命令之类。</p>
-
-<h3 id="toc_13">设置相关执行参数</h3>
-
-<h3 id="toc_14">初始化哨兵模式</h3>
-
-<h3 id="toc_15">检查rdb和aof文件</h3>
-
-<pre><code>    if (strstr(argv[0],&quot;redis-check-rdb&quot;) != NULL)  // 优先检查rdb文件
-        redis_check_rdb_main(argc,argv,NULL);   // 检查rdb文件
-    else if (strstr(argv[0],&quot;redis-check-aof&quot;) != NULL)
-        redis_check_aof_main(argc,argv);    // 检查aof文件
+<pre><code>port 6379
+save 900 1
+save 300 1
 </code></pre>
 
-<p>指明2个文件<code>redis-check-rdb</code>和<code>redis-check-aof</code>和<code>redis</code>是同一个二进制文件。</p>
+<p>这样的好处就是可以和配置文件复用同一套的解析方法。</p>
 
-<p>其中，<code>redis-check-aof</code>命令是支持对aof文件进行修复。</p>
+<p>其中有个有趣的模式是支持从输入流中获取配置信息，开启方法则是在配置文件的时候输入一个减号，例如：<code>redis-server -</code>，后续通过<code>ctrl+c</code>退出模式。当然，格式将和配置文件是相同。</p>
 
-<h3 id="toc_16">解析参数配置</h3>
+<p>后续的配置解析是将整个配置信息通过<code>\n\t\r</code>，进行分隔成多行，并针对每一行的第一个元素小写，找到相应的变量设置。若设置错误，则直接会报错并退出进程。</p>
 
-<h3 id="toc_17">初始化redis相关配置</h3>
+<h3 id="toc_4">模块初始化</h3>
 
-<h3 id="toc_18">检查backlog</h3>
+<p>初始化流程中，大部分模块都进行了初始化处理，例如：bio，lua，模块module，cluster，信号，慢日志等。</p>
 
-<h3 id="toc_19">加载模块和数据</h3>
+<p>初始化的时候，主要功能都是在做对象内存的申请，端口的监听。其中当然包括多个数据库的申请，以及持久化数据的导入。</p>
 
-<h3 id="toc_20">进入事件模式</h3>
+<h2 id="toc_5">事件</h2>
 
-<h2 id="toc_21">相关链接</h2>
+<p>Redis事件分为2类：<em>时间事件和文件事件</em>，事件可以和Nginx的事件模型对齐，文件事件和定时事件交替执行。而和Nginx不一样的是，Redis对时间要求比Nginx严格，所以Redis会搜索最近的一个时间事件，并计算文件事件获取的超时时间。</p>
+
+<h3 id="toc_6">时间事件</h3>
+
+<p>在Redis中，时间事件记录就是通过链条来记录：</p>
+
+<pre><code>typedef struct aeTimeEvent {
+    long long id; /* time event identifier. */
+    long when_sec; /* seconds */
+    long when_ms; /* milliseconds */
+    aeTimeProc *timeProc;
+    aeEventFinalizerProc *finalizerProc;
+    void *clientData;
+    struct aeTimeEvent *next;
+} aeTimeEvent;
+</code></pre>
+
+<p>所以，每次找最近的时间事件，都是直接遍历来获取。<br/>
+从整个的Redis源码中，只有一个地方使用到了时间事件，那就是ServerCron方法，</p>
+
+<pre><code>aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL)
+</code></pre>
+
+<p>这个方法主要用于维护Redis服务器的日常，可以看见的是，该方法是1ms执行一次，所以，所有的文件事件间隔不会大于1ms，这也是为啥Redis高效的原因。</p>
+
+<h4 id="toc_7">ServerCron 函数</h4>
+
+<p>作为主要的定时函数，ServerCron函数功能主要用于维护整个Redis的稳定。常见的操作有：数据库的重哈希、数据持久化、内存清理、删除超时客户端等。</p>
+
+<p>与此同时，ServerCron函数也会调用其他的定时函数，例如：ClientCron、DatabaseCron函数，这些原本都是在ServerCron函数中，后来为了便于维护，所以，移出去了。</p>
+
+<p>与ServerCron函数有关系的配置就是hz配置，官方解释是：<code>Time interrupt calls/sec</code>，默认是10，也就是说，默认是每100ms执行一次。</p>
+
+<p><em>那如果对于有些定时任务需要1s执行一次，怎么实现？</em>有2种办法，一是新建一个定时任务来做这个操作，二是在ServerCron中来做调用这个函数。</p>
+
+<p>而在类似ClientCron函数，Redis就采用的是第二种方法，其中会设置cronloops方法来记录当前是第几次循环，并判断是否需要调用：</p>
+
+<pre><code>#define run_with_period(_ms_) if ((_ms_ &lt;= 1000/server.hz) || !(server.cronloops%((_ms_)/(1000/server.hz))))
+</code></pre>
+
+<p>这个宏类似于条件判断，每ms时间执行一次后续的操作。如:</p>
+
+<pre><code>run_with_period(100) trackOperationsPerSecond();
+</code></pre>
+
+<p>每百微秒，执行一次跟踪操作函数，记录这段时间的命令执行情况</p>
+
+<h3 id="toc_8">文件事件</h3>
+
+<p>对于文件事件，是整个Redis异步处理的关键，在各个模块，例如AOF，集群，脚本等模块都需要文件事件来支撑。不过和时间事件不同，文件事件是根据不同的模型实现的，其中包含：select\epoll\evport\kqueue四种模型，每个模型都抽象出了7个方法：<br/>
+1. aeApiCreate<br/>
+2. aeApiResize<br/>
+3. aeApiFree<br/>
+4. aeApiAddEvent<br/>
+5. aeApiDelEvent<br/>
+6. aeApiPoll<br/>
+7. aeApiName</p>
+
+<!-- 而四个文件模型各自的优缺点如下： -->
+
+<p>在端口监听的时候，使用到了文件模型来处理socket信息：</p>
+
+<pre><code>(aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE, acceptTcpHandler,NULL)
+</code></pre>
+
+<h3 id="toc_9">循环前置</h3>
+
+<p>对于一些需要频繁的操作，需要有一个地方来执行，如果使用时间模型来做的话，那容易导致间隔过长，于是在Redis的事件模型中，存在beforeSleep函数，在每次执行事件的时候，会先调用该函数，主要功能一般都是用于清理无用数据以及持久化数据落盘等简单动作。</p>
+
+<h2 id="toc_10">命令处理</h2>
+
+<p>命令处理可以划分3个部分：<em>连接建立、请求处理、返回数据</em>。</p>
+
+<h3 id="toc_11">接收请求</h3>
+
+<p>连接的建立在文件事件里面已经有提过，就是通过将socke绑定在文件事件中执行。</p>
+
+<p>在建立连接的时候，redis都会循环1000次，尽可能多的接收请求。</p>
+
+<p>获得了socket后，redis会创建客户端对象，其中需要检查2个事情：是否超过最大连接数、是否是无密码远程登录。对应配置为：<code>maxclients</code>和<code>protected-mode</code>。</p>
+
+<p>后续再建立client的时候，会将socket设置为noblock和TcpNoDelay模式，加快数据的传输，同时还会设置keepalive模式。</p>
+
+<p>请求处理的时候，在接收请求，redis进行了协议的处理，redis每次会申请16k的大小来获取数据，同时根据是否知道长度来调整缓存区<br/>
+同时，redis后续会根据，是否成功，或缓存数据是否过多来中的客户端请求<br/>
+之后，会根据是否为master来做一些广播的处理</p>
+
+<h3 id="toc_12">请求处理</h3>
+
+<p>当获取到请求的时候，redis会解析请求的第一个参数，找到相应的命令对象</p>
+
+<pre><code>struct redisCommand redisCommandTable[] = {
+    {&quot;module&quot;,moduleCommand,-2,&quot;as&quot;,0,NULL,1,1,1,0,0},
+    {&quot;get&quot;,getCommand,2,&quot;rF&quot;,0,NULL,1,1,1,0,0},
+    {&quot;set&quot;,setCommand,-3,&quot;wm&quot;,0,NULL,1,1,1,0,0},
+</code></pre>
+
+<p>以get命令来看，命令列表其实是通过一个枚举的过程来做的，到最后会变成一个字典，所以查询的效率很高。</p>
+
+<p>在执行的过程中，命令需要做一系列的检查，包括各种情况：</p>
+
+<ol>
+<li>命令不存在</li>
+<li>命令不合法</li>
+<li>需要登录，却不是auth命令</li>
+<li>若命令对内存严格要求，且服务器无内存</li>
+<li>如果磁盘上存在问题，请不要接受写命令</li>
+<li>如果不满足最低正常从服务器要求，不接受写操作</li>
+<li>如果只是一个只读的从服务器，不接受写操作</li>
+<li>在订阅模式下，只允许一部分命令</li>
+<li>当连接断开时，是否接受请求</li>
+<li>若正在加载，接受一部分请求</li>
+<li>如果lua命令太慢，则只允许一部分请求</li>
+<li>如果是事务命令，则加入事务列表</li>
+<li>否则就执行</li>
+</ol>
+
+<h4 id="toc_13">事务操作</h4>
+
+<h4 id="toc_14">阻塞操作</h4>
+
+<h4 id="toc_15">订阅操作</h4>
+
+<h2 id="toc_16">相关链接</h2>
 
 <ul>
 <li><a href="https://blog.csdn.net/guodongxiaren/article/details/44747719">https://blog.csdn.net/guodongxiaren/article/details/44747719</a></li>
 <li><a href="http://www.spongeliu.com/415.html">http://www.spongeliu.com/415.html</a></li>
 <li><a href="https://github.com/huangz1990/blog/blob/master/diary/2013/how-redis-fix-invalid-aof-file.rst">https://github.com/huangz1990/blog/blob/master/diary/2013/how-redis-fix-invalid-aof-file.rst</a></li>
+<li><a href="https://www.cnblogs.com/frank-yxs/p/5925838.html">https://www.cnblogs.com/frank-yxs/p/5925838.html</a></li>
 </ul>
 
-<h2 id="toc_22">总结</h2>
+<h2 id="toc_17">总结</h2>
 
                         
                       </div>
