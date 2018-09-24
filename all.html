@@ -144,10 +144,12 @@
 </tr>
 <tr>
 <td>Select</td>
-<td>默认</td>
+<td>兜底</td>
 </tr>
 </tbody>
 </table>
+
+<p>对于四种模型，select是最简单的，也是性能较差的一个，所以是用于兜底方案，而关于epoll和kqueue都是主动触发的事件模型。2者其实是用于解决C10K问题而从select中衍生出来的模型，同时是分别针对linux系统和Unix系统设计。</p>
 
 <pre><code>#ifdef HAVE_EVPORT
 #include &quot;ae_evport.c&quot;
@@ -188,7 +190,7 @@ if (strcmp(argv[1], &quot;--test-memory&quot;) == 0) {
 }
 </code></pre>
 
-<p>配置检查第一个参数，如果不是以双减号开头，则作为配置文件，同时会不全configfile为绝对路径，这样的话，后续debug模式下重启服务可以正常启动。</p>
+<p>配置检查第一个参数，如果不是以双减号开头，则作为配置文件，同时会补全configfile为绝对路径，这样的话，后续debug模式下重启服务可以正常启动。</p>
 
 <pre><code>if (argv[j][0] != &#39;-&#39; || argv[j][1] != &#39;-&#39;) {
     configfile = argv[j];
@@ -273,13 +275,13 @@ save 300 1
 <h3 id="toc_8">文件事件</h3>
 
 <p>对于文件事件，是整个Redis异步处理的关键，在各个模块，例如AOF，集群，脚本等模块都需要文件事件来支撑。不过和时间事件不同，文件事件是根据不同的模型实现的，其中包含：select\epoll\evport\kqueue四种模型，每个模型都抽象出了7个方法：<br/>
-1. aeApiCreate<br/>
-2. aeApiResize<br/>
-3. aeApiFree<br/>
-4. aeApiAddEvent<br/>
-5. aeApiDelEvent<br/>
-6. aeApiPoll<br/>
-7. aeApiName</p>
+1. aeApiCreate - 创建事件对象，类似初始化<br/>
+2. aeApiResize - 重置事件对象<br/>
+3. aeApiFree - 删除事件对象<br/>
+4. aeApiAddEvent - 添加事件<br/>
+5. aeApiDelEvent - 删除事件<br/>
+6. aeApiPoll - 获取事件列表<br/>
+7. aeApiName - 获取事件名称</p>
 
 <!-- 而四个文件模型各自的优缺点如下： -->
 
@@ -434,9 +436,13 @@ typedef struct multiState {
 <li><a href="http://www.spongeliu.com/415.html">http://www.spongeliu.com/415.html</a></li>
 <li><a href="https://github.com/huangz1990/blog/blob/master/diary/2013/how-redis-fix-invalid-aof-file.rst">https://github.com/huangz1990/blog/blob/master/diary/2013/how-redis-fix-invalid-aof-file.rst</a></li>
 <li><a href="https://www.cnblogs.com/frank-yxs/p/5925838.html">https://www.cnblogs.com/frank-yxs/p/5925838.html</a></li>
+<li><a href="https://people.eecs.berkeley.edu/%7Esangjin/2012/12/21/epoll-vs-kqueue.html">https://people.eecs.berkeley.edu/~sangjin/2012/12/21/epoll-vs-kqueue.html</a></li>
+<li><a href="https://www.cnblogs.com/moonz-wu/p/4740908.html">https://www.cnblogs.com/moonz-wu/p/4740908.html</a></li>
 </ul>
 
 <h2 id="toc_17">总结</h2>
+
+<p>贼累，准备做PPT，思考怎么写</p>
 
                         
                       </div>
