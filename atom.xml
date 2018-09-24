@@ -4,7 +4,7 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2018-09-23T11:36:47+08:00</updated>
+  <updated>2018-09-24T15:26:30+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -251,9 +251,90 @@ save 300 1
 
 <h4 id="toc_13">事务操作</h4>
 
+<p>对于事务类操作，有 MULTI、DISCARD、EXEC和WATCH四个命令。而参考mysql中的事务，有begin、rollback、commit三个命令。多了一个命令，而其实原理上已经完全不一样。<br/>
+对于事务的实现，数据结构如下：</p>
+
+<pre><code>typedef struct multiCmd {
+    robj **argv;
+    int argc;
+    struct redisCommand *cmd;
+} multiCmd;
+
+typedef struct multiState {
+    multiCmd *commands;     /* 事务命令数组 */
+    int count;              /* 命令个数 */
+    int minreplicas;        /* MINREPLICAS for synchronous replication */
+    time_t minreplicas_timeout; /* MINREPLICAS timeout as unixtime. */
+} multiState;
+</code></pre>
+
+<p>其中，主要是commands属性用于存储事务的命令列表，以及一些参数。</p>
+
+<p>首先，watch命令是一个有趣的命令，它会监听一些数据是否变化，首先，对于每个数据库和每个客户端对象，都会有一个<code>watched_keys</code>属性：对于客户端对象而言，<code>watched_keys</code>是一个list列表，主要用于记录当前监听的键，而对于数据库对象而言，<code>watched_keys</code>则是一个以<code>watch</code>的变量名键的字典，用于记录当前键被监听的客户端列表。</p>
+
+<p>如果每次数据库中有变化，其中包括列表排序、过期清空等操作，都会将相关的客户端状态置为<code>CLIENT_DIRTY_CAS</code>状态</p>
+
+<p>MULTI命令和DISCARD命令则相对比较简单，前者只需要将客户端属性设置为事务态，而后者则相反，移除客户端的事务态标记，同时清空命令数组等。</p>
+
+<p>而对于EXEC命令，则是极其复杂的，因为它需要检查异常情况，同时运行命令：</p>
+
+<ol>
+<li>检查客户端是否在事务态</li>
+<li>检查命令是否正常以及键是否被改变</li>
+<li>取消所有监听的键</li>
+<li>广播事务命令</li>
+<li>循环执行所有命令，并返回</li>
+</ol>
+
+<p>回顾一下事务的4个条件（ACID）：原子性（Atomicity，或称不可分割性）、一致性（Consistency）、隔离性（Isolation，又称独立性）、持久性（Durability）。</p>
+
+<p>Redis对于原子性是没有特别严格的保证，正常运行时，操作失败的时候，可能是语法错误或者错误的数据库类型操作，这种操作一般都可以避免。<br/>
+由于Redis单线程来保证，由于命令只能串行运行，所以，隔离性和一致性，Redis完全没问题。<br/>
+而关于持久性，Redis通过AOF和快照2中模式来实现，不过，并不是完全能持久化。</p>
+
+<p>所以，对于Redis事务而言，实现了隔离性和一致性，但无法保证原子性和持久性</p>
+
+<blockquote>
+<p>待补充，事务中的异常处理以及广播</p>
+</blockquote>
+
 <h4 id="toc_14">阻塞操作</h4>
 
+<p>阻塞命令在Redis中，其中是比较关键的一系列命令，很多工具都是通过它来实现，例如消息队列等。而核心命令则是：blpop和brpop。</p>
+
+<p>关于阻塞，本身和事务的watch命令类似，在数据库对象中都存在一个<code>blocking_keys</code>字典，它的键为相关的键名，值则是客户端对象列表。</p>
+
+<p>而在客户端对象这边是存在一个bpop属性，结构体如下：</p>
+
+<pre><code>typedef struct blockingState {
+    /* Generic fields. */
+    mstime_t timeout;       /* Blocking operation timeout. If UNIX current time
+                             * is &gt; timeout then the operation timed out. */
+
+    /* BLOCKED_LIST */
+    dict *keys;             /* The keys we are waiting to terminate a blocking
+                             * operation such as BLPOP. Otherwise NULL. */
+    robj *target;           /* The key that should receive the element,
+                             * for BRPOPLPUSH. */
+
+    /* BLOCKED_WAIT */
+    int numreplicas;        /* Number of replicas we are waiting for ACK. */
+    long long reploffset;   /* Replication offset to reach. */
+
+    /* BLOCKED_MODULE */
+    void *module_blocked_handle; /* RedisModuleBlockedClient structure.
+                                    which is opaque for the Redis core, only
+                                    handled in module.c. */
+} blockingState;
+</code></pre>
+
+<p>其中需要关注的主要是keys、timeout、target三个属性，其中keys主要用于记录阻塞的列表名称，timeout则用于表示阻塞超时时间，target则用于特殊命令<code>BRPOPLPUSH</code>来标记转移的列表对象。</p>
+
+<p>对于已阻塞的客户端而言，其实只有在增加键的时候才会结束阻塞，所以，每个新增列表的时候，都会将列表名加入<code>ready_keys</code>列表中，但命令执行的时候，会检查该列表是否为空，若不为空，则代表有新的列表变动，所以需要修改阻塞状态。</p>
+
 <h4 id="toc_15">订阅操作</h4>
+
+<p>对于订阅功能，其实包含的命令只有 PUBLISH、SUBSCRIBE 2个命令。一个用于订阅管道，一个用于推送消息。其中的中间键叫channel。这与阻塞操作不同的在于，订阅发布是一个1对n的模型，而pop操作是一个1对1的模型。这其中的难度就在于发布给多个客户端以及模式订阅的功能。</p>
 
 <h2 id="toc_16">相关链接</h2>
 
