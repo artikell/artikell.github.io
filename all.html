@@ -117,15 +117,6 @@
 
 <p>在阅读源码时，总是会发现代码细节无法深追，导致不理解作者的目的。</p>
 
-<h2 id="toc_1">Todolist</h2>
-
-<ul>
-<li>磁盘顺序和随机读写的差异和实现</li>
-<li>kafka和rockmq的性能对比</li>
-<li>zero copy的具体实现</li>
-<li>mmap的特点以及具体应用</li>
-<li>c++中的各个关键字以及相关优化</li>
-</ul>
 
                         
                       </div>
@@ -133,7 +124,7 @@
                 </a>
                 <div class="read-more clearfix">
                   <div class="more-left left">
-                  
+                   <a href="15526053026851.html">Read more</a>&nbsp;&nbsp; 
                     <span class="date">2019/3/15</span>
                     <span>posted in&nbsp;</span> 
           				  
@@ -732,176 +723,6 @@ typedef struct multiState {
 <p>Redis集群管理包括哨兵模式、分片、以及主从同步3大块。外部扩展包括codis以及kedis2个项目，顺带zookeeper的集群解决方案。<br/>
 本文主要从主从和分片模块收集并解析。</p>
 
-<h2 id="toc_1">集群来源</h2>
-
-<p>在Redis分布式的设计中，总共出现了3个模式：主从模式、哨兵模式、集群模式。主从是最基础的实现了读写分离功能，哨兵则是通过分布式集群进行故障的检查与转移，提高了整个分布式系统的高可用性，集群模式则是集大成者，提供了数据分片，以及故障转移的一系列功能。</p>
-
-<p>在集群模式下，redis选用了p2p模式进行系统的构建，这个的优点是保证系统的性能能达到最大，避免中间出现proxy系统来管理，同时保证最终一致性。为此专门设计了一套系统消息系统用来进行信息同步，避免干扰了原有的命令协议。</p>
-
-<p>后续，我们将会一一描述系统的各个功能。</p>
-
-<h2 id="toc_2">关于分布式系统</h2>
-
-<p>对于分布式系统的数据一致性协议，包含很多种：<br/>
-1. 两阶段提交协议<br/>
-2. 三阶段提交协议<br/>
-3. TCC协议<br/>
-4. Paxos协议<br/>
-5. ZAB协议<br/>
-6. Raft协议<br/>
-7. Quorum协议<br/>
-8. Gossip协议</p>
-
-<p>两阶段提交协议和三阶段提交协议是一种强一致性的协议，需要在集群中选取协调者来协调所有节点同时更新数据，这样会导致效率严重的下降。</p>
-
-<p>而在redis的集群中，节点间的信息同步是通过gossip协议，而选举算法，则是通过raft算法实现。其实2者并没什么冲突，完全可以用在同一个系统中。</p>
-
-<h3 id="toc_3">集群消息</h3>
-
-<p>前文讲了集群模式下，专门设计了一套新的消息协议来进行信息同步，也就是<em>clusterMsg</em>结构体：<br/>
-<code><br/>
-typedef struct {<br/>
-    char sig[4];        /* Signature &quot;RCmb&quot; (Redis Cluster message bus). */<br/>
-    uint32_t totlen;    /* Total length of this message */<br/>
-    uint16_t ver;       /* Protocol version, currently set to 1. */<br/>
-    uint16_t port;      /* TCP base port number. */<br/>
-    uint16_t type;      /* Message type */<br/>
-    uint16_t count;     /* Only used for some kind of messages. */<br/>
-    uint64_t currentEpoch;  /* The epoch accordingly to the sending node. */<br/>
-    uint64_t configEpoch;   /* The config epoch if it&#39;s a master, or the last<br/>
-                               epoch advertised by its master if it is a<br/>
-                               slave. */<br/>
-    uint64_t offset;    /* Master replication offset if node is a master or<br/>
-                           processed replication offset if node is a slave. */<br/>
-    char sender[CLUSTER_NAMELEN]; /* Name of the sender node */<br/>
-    unsigned char myslots[CLUSTER_SLOTS/8];<br/>
-    char slaveof[CLUSTER_NAMELEN];<br/>
-    char myip[NET_IP_STR_LEN];    /* Sender IP, if not all zeroed. */<br/>
-    char notused1[34];  /* 34 bytes reserved for future usage. */<br/>
-    uint16_t cport;      /* Sender TCP cluster bus port */<br/>
-    uint16_t flags;      /* Sender node flags */<br/>
-    unsigned char state; /* Cluster state from the POV of the sender */<br/>
-    unsigned char mflags[3]; /* Message flags: CLUSTERMSG_FLAG[012]_... */<br/>
-    union clusterMsgData data;<br/>
-} clusterMsg;<br/>
-</code></p>
-
-<p>结构体头部主要是传输了一部分当前节点的信息：totlen信息长度，也就是最多32位，ver版本默认是1，port就是当前的节点端口，type表示当前信息的类型，大概有：PING\PONG\MEET\FAIL\UPDATE\PUBLISH几类。<br/>
-Epoch则是代表当前的轮次，currentEpoch表示当前投票的轮次，而configEpoch表示当前信息的版本<br/>
-offset表示当前节点的偏移量是多少。<br/>
-sender表示当前节点的名称，myslots表示当前节点管理的slots。myip表示当前节点的ip信息。<br/>
-<strong>后续几个信息待补充。</strong></p>
-
-<p>对于集群信息，redis每秒会从所有节点中抽取5个节点中的一个节点来发送ping信息，同时针对很长时间没发送过的PING的节点会单独发送ping信息。</p>
-
-<p>meet信息则是在客户端发送过了meet命令，或者在接收到新的节点信息的时候，会尝试去连接。这后续会讲解。</p>
-
-<h3 id="toc_4">关于currentEpoch和configEpoch的区别</h3>
-
-<p>这2个Epoch的区别，其实就是2种分布式协议所需要的信息。<br/>
-currentEpoch表示raft协议中的选举轮次，每次加一，都代表新的投票。而configEpoch则表示当前节点的配置版本，gossip协议同步信息时，会将其带上，若有信息更新，则会选择一个新的epoch作为标识。</p>
-
-<p>问：如果选错节点怎么办？？</p>
-
-<h2 id="toc_5">节点管理</h2>
-
-<h3 id="toc_6">关于MEET加入节点</h3>
-
-<p>构建一个集群，主要是通过meet命令发送ip:port给集群内节点，后续都交由集群节点内部来处理。当然，这个配置也支持从配置文件中获取：</p>
-
-<p>问：配置文件格式是啥？</p>
-
-<p>当接收到了meet请求后，节点会将ip:port新建一个待握手的节点信息。其中会有2个状态，一个是CLUSTER_NODE_HANDSHAKE，一个是CLUSTER_NODE_MEET。<br/>
-握手阶段的结束表示已经获得了对应节点的PING信息，拿到了相关的信息，而MEET阶段的结束只是表示已经建立好了连接并已发送了PING信息，但并没做完验证信息。</p>
-
-<p>当一个节点已经和集群中的某个节点进行握手后，他们2将会通过ping消息将对方发送给其他节点，当其他节点获得到了新的节点信息，则会将其加入列表，并发送meet请求给新节点，这样就达到了分布式系统加入新节点的功能。</p>
-
-<h3 id="toc_7">删除节点</h3>
-
-<p>节点的删除则是通过<code>cluster forget</code>命令来进行的，</p>
-
-<p>听说会广播出去，待查看</p>
-
-<h3 id="toc_8">故障转移</h3>
-
-<p>当某些master出现了异常，等于是未进行回复，则会进入故障标记阶段。</p>
-
-<p>首先，如果集群中某个节点PONG回复过长，会被相关节点标记位fpail，同时会通过gossip协议将状态同步给其他节点。</p>
-
-<p>当slave节点发现当前节点已经被大多数标记为下线时，则会向其他节点发送failover_auth请求选择自己为新的主节点。</p>
-
-<p>每次事件前置后，都会检查是否已经满足条件，若已满足，则会开始进行故障转移的功能。这一步选举就是通过Raft协议进行。</p>
-
-<p>从节点获取到超过半数的选票后，做的事件就比较简单，只是将当前节点设置为master并更新了slot信息，这样，后续的gossip消息同步，就会将数据给传播到各个节点上。</p>
-
-<h3 id="toc_9">手动故障转移</h3>
-
-<p>而，上述都是对于自动的故障转移设计的流程，redis集群本身还支持通过命令<code>CLUSTER  FAILOVER</code>手动的故障转移功能。其中有2中转移模式：<code>FORCE</code>和<code>TAKEOVER</code>。</p>
-
-<p>如果有FORCE选项，则从节点不会与主节点进行交互，主节点也不会阻塞其客户端，而是从节点立即开始故障转移流程：发起选举、统计选票、赢得选举、升级为主节点并更新配置。</p>
-
-<p>如果有TAKEOVER选项，则更加简单粗暴：从节点不再发起选举，而是直接将自己升级为主节点，接手原主节点的槽位，增加自己的configEpoch后更新配置。</p>
-
-<p>因此，使用FORCE和TAKEOVER选项，主节点可以已经下线；而不使用任何选项，只发送”CLUSTER  FAILOVER”命令的话，主节点必须在线。</p>
-
-<h2 id="toc_10">槽管理</h2>
-
-<h3 id="toc_11">设置槽</h3>
-
-<p>槽的设计是根据分布式系统的数据分片设计，整个的cluster支持将16384槽数据分片。</p>
-
-<p>初始化的时候，可以使用<code>cluster addsolots</code>命令来设置节点所标记的slot。当然这个命令也有一定的注意事项：<br/>
-1. 该命令只有当所有指定的slots在接收命令的节点上还没有分配得的情况下生效。节点将 拒绝接纳已经分配到其他节点的slots（包括它自己的）。<br/>
-2. 同一个slot被指定多次的情况下命令会失败。<br/>
-3. 执行这个命令有一个副作用，如果slot作为其中一个参数设置为importing，一旦节点向自己分配该slot（以前未绑定）这个状态将会被清除。</p>
-
-<p>而当所有slots都已经被分配完成后，集群将进入正常服务模式。此时就不能在使用<code>addslots</code>命令来设置<code>slot</code>信息。</p>
-
-<p>新的命令则是通过<code>cluster setslots</code>来设置slots的状态进行槽迁移：<br/>
-1. cluster setslot <slot> importing <source_id><br/>
-2. cluster setslot <slot> migrating <target_id><br/>
-3. cluster getkeysinslot <slot> <count><br/>
-4. migrate <target_id> <target_port> <key_name> 0 <timeout><br/>
-5. cluster setslot <slot> none <source_id><br/>
-6. cluster setslot <slot> none <target_id></p>
-
-<p>关键步骤就是步骤4，此时需要通过脚本来不断的迁移相关的键信息，migrate命令是一个特殊的命令，他是一个迁移键的原子命令，内部是由dump和restore命令组成，每次都利用dump将数据序列号后，在调用目标节点的restore命令传输数据，后续再将数据从本地删除，达到原子的迁移数据功能。但风险就是如果键信息过大，则需要迁移过长时间。这也是无法避免的问题。</p>
-
-<p>在分片的前提下，会产生2个新的错误码：ACK和MOVE。首先介绍MOVE错误码，该错误码主要是针对不在该节点的分片被查询，则会得到一个MOVE信息，并得到正常的节点信息。而对于ACK错误，则是在槽迁移过程中，访问的数据已经被迁移后，节点会返回ACK信息给客户端，使其重定向到新节点。</p>
-
-<p>在数据分片时，常常有不可避免的分片不均的问题，如果某个槽的数据过多，这对于开发人员是无法避免的，而集群模式下，提供了tag的功能，当然也是在对键名进行改造。</p>
-
-<h2 id="toc_12">节点均衡</h2>
-
-<p>在故障转移后，常常会出现从节点不均衡的问题，那么就会触发从节点的均衡，这个功能其实相对简单。<br/>
-在每次循环时，节点会检查自己是否为最大的主节点的从节点，如果是的话，从节点将会检查自己是否为名字最小的那个从节点，若是的，则就将自己的主节点切换。</p>
-
-<h2 id="toc_13">信息处理</h2>
-
-<p>信息处理是一个很重要的部分，cluster里面专门有好几百行来处理信息，其中就包括各种异常情况，后续我们来一一列举。</p>
-
-<h3 id="toc_14">前置处理</h3>
-
-<p>信息的前置处理大概分为2个部分：获取信息长度、更新节点信息。</p>
-
-<p>首先由于这是一个新的信息格式，所以cluster中会先解析出信息的总长度，这和所有二进制协议是一样的。</p>
-
-<p>之后，节点会查看新的连接是否已经是正常节点（存在且非握手状态），是的话，则修改选举轮次，偏移量等。</p>
-
-<p>特殊逻辑是在手动故障转移的同时，收到了master请求的时候，同时还会记录下master当前的偏移量。</p>
-
-<h3 id="toc_15">PING/PONG/MEET</h3>
-
-<h2 id="toc_16">结语</h2>
-
-<p>集群分析还没解析完成。</p>
-
-<h2 id="toc_17">相关链接</h2>
-
-<ul>
-<li><a href="%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%EF%BC%8C%E4%B8%A4%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4%E5%8D%8F%E8%AE%AE%EF%BC%8C%E4%B8%89%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4%E5%8D%8F%E8%AE%AE">https://www.cnblogs.com/balfish/p/8658691.html</a></li>
-<li><a href="%E5%88%86%E5%B8%83%E5%BC%8F%E7%B3%BB%E7%BB%9F%E7%90%86%E8%AE%BA%E4%B9%8BQuorum%E6%9C%BA%E5%88%B6">https://www.cnblogs.com/hapjin/p/5626889.html</a></li>
-</ul>
 
                         
                       </div>
@@ -909,7 +730,7 @@ currentEpoch表示raft协议中的选举轮次，每次加一，都代表新的�
                 </a>
                 <div class="read-more clearfix">
                   <div class="more-left left">
-                  
+                   <a href="15319770094977.html">Read more</a>&nbsp;&nbsp; 
                     <span class="date">2018/7/19</span>
                     <span>posted in&nbsp;</span> 
           				  
