@@ -4,7 +4,7 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2019-03-18T20:35:06+08:00</updated>
+  <updated>2019-04-15T12:02:43+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -2159,17 +2159,6 @@ zset-max-ziplist-value 64
 <li><a href="https://blog.csdn.net/kl1106/article/details/79566594">CSDN - Redis缓存淘汰</a></li>
 <li><a href="https://blog.csdn.net/lizhi_java/article/details/68953179">CSDN - 缓存淘汰策略</a></li>
 </ul>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[Hello World]]></title>
-    <link href="https://artikell.github.io/15284948308748.html"/>
-    <updated>2018-06-09T05:53:50+08:00</updated>
-    <id>https://artikell.github.io/15284948308748.html</id>
-    <content type="html"><![CDATA[
-<p><a href="https://git.xiaojukeji.com/beatles/homeapi/blob/0cd7fae0767315bce0bec16b50759cce8405e568/src/controller/common/user/getconfiguration.php#L395">https://git.xiaojukeji.com/beatles/homeapi/blob/0cd7fae0767315bce0bec16b50759cce8405e568/src/controller/common/user/getconfiguration.php#L395</a></p>
 
 ]]></content>
   </entry>
