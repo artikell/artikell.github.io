@@ -4,7 +4,7 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2019-06-15T11:13:05+08:00</updated>
+  <updated>2019-06-15T11:38:08+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -12,6 +12,29 @@
   </author>
   <generator uri="http://www.mweb.im">MWeb</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[Mysql架构]]></title>
+    <link href="https://artikell.github.io/15605689231307.html"/>
+    <updated>2019-06-15T11:22:03+08:00</updated>
+    <id>https://artikell.github.io/15605689231307.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">MySQL核心结构</h2>
+
+<h2 id="toc_1">SQL执行顺序</h2>
+
+<p>MySQL的语句一共分为11步，如下图所标注的那样，最先执行的总是FROM操作，最后执行的是LIMIT操作。<br/>
+<img src="media/15605689231307/15605691055531.jpg" alt=""/></p>
+
+<p>其中每一个操作都会产生一张虚拟的表，这个虚拟的表作为一个处理的输入，只是这些虚拟的表对用户来说是透明的，但是只有最后一个虚拟的表才会被作为结果返回。</p>
+
+<p><em>如果没有在语句中指定某一个子句，那么将会跳过相应的步骤。</em></p>
+
+<pre><code>FROM—&gt;ON—&gt;JOIN—&gt;WHERE—&gt;GROUP BY—&gt;SUM(聚合函数)—&gt;HAVING—&gt;SELECT—&gt;DISTINCT—&gt;UNION—&gt;ORDER BY—&gt;LIMIT
+</code></pre>
+
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[TCP vs UDP 总结]]></title>
@@ -203,11 +226,15 @@ UDP是一个无状态的传输协议，所以它在传递数据时非常快。</
 <p>共享表空间和表空间的结构差异？</p>
 </blockquote>
 
+<h3 id="toc_2">表结构</h3>
+
 <p>表空大致结构如下：<br/>
 <img src="media/15602214770128/15602215597762.jpg" alt=""/></p>
 
 <p>在表空间结构下面，是通过分段进行管理，段结构包含常用的数据段、索引段、回滚段。<br/>
 而不同段下面，则是通过分区来进行数据划分，每个区都是1MB，而页面大小都是16KB，所以每个区都拥有64个页。</p>
+
+<h3 id="toc_3">页结构</h3>
 
 <p>页的具体类型有：<br/>
 1. 数据页<br/>
@@ -243,7 +270,7 @@ UDP是一个无状态的传输协议，所以它在传递数据时非常快。</
 
 <p><img src="media/15602214770128/15602367126223.jpg" alt=""/></p>
 
-<h2 id="toc_2">Innodb的功能</h2>
+<h2 id="toc_4">Innodb的功能</h2>
 
 <p>innodb主要是将数据放在一个表空间中进行管理，通过mvcc来获得高并发，同时提供插入缓冲、二次写、自适应哈希索引、预读来支持高性能和高可用。</p>
 
@@ -262,19 +289,27 @@ IO Thread，负责处理大量的IO操作<br/>
 Purge Thread，负责回收已经使用的undolog页面<br/>
 Page cleaner Thread，负责将脏页刷新至磁盘</p>
 
-<p>内存分布：<br/>
-缓冲池是一个大的内存块，其中包括：索引页、数据页、undo页等。<br/>
+<h3 id="toc_5">内存分布</h3>
+
+<p>缓冲池是一个大的内存块，其中包括：索引页、数据页、undo页等。<br/>
 而刷新页面算法则通过LRU List算法来更新，而为了保证更好的效率，则新的页面会先插入midpoint位置上。<br/>
 Free List和Flush List的功能和名字相同，一个是管理无用内存页列表，一个是管理脏页的列表。</p>
 
 <p><img src="media/15602214770128/15602435608389.jpg" alt=""/></p>
 
-<p>重做日志缓冲<br/>
-1. Master Thread每一秒会刷新一次重做日志<br/>
-2. 事务提交会刷新一次重做日志<br/>
-3. 缓冲池小于1/2时，刷新重做日志</p>
+<h3 id="toc_6">重做日志缓冲</h3>
 
-<p>Innodb特征</p>
+<ol>
+<li>Master Thread每一秒会刷新一次重做日志</li>
+<li>事务提交会刷新一次重做日志</li>
+<li>缓冲池小于1/2时，刷新重做日志</li>
+</ol>
+
+<h2 id="toc_7">相关链接</h2>
+
+<ul>
+<li><a href="https://draveness.me/mysql-innodb.html">https://draveness.me/mysql-innodb.html</a></li>
+</ul>
 
 ]]></content>
   </entry>
@@ -1943,25 +1978,6 @@ if (pthread_sigmask(SIG_BLOCK, &amp;sigset, NULL))
 <ul>
 <li><a href="https://www.cnblogs.com/lijunamneg/archive/2013/01/25/2877211.html">线程取消</a></li>
 <li><a href="https://yq.aliyun.com/articles/58703?utm_source=tool.lu">bio学习</a></li>
-</ul>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[Redis 跳跃表]]></title>
-    <link href="https://artikell.github.io/15286261757400.html"/>
-    <updated>2018-06-10T18:22:55+08:00</updated>
-    <id>https://artikell.github.io/15286261757400.html</id>
-    <content type="html"><![CDATA[
-<h2 id="toc_0">前言</h2>
-
-<h2 id="toc_1">算法分析</h2>
-
-<h2 id="toc_2">相关链接</h2>
-
-<ul>
-<li><a href="https://blog.csdn.net/men_wen/article/details/70040026">CSDN - 跳跃表(skiplist)</a></li>
 </ul>
 
 ]]></content>

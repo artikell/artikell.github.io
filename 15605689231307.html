@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  Friends - artikell
+  Mysql架构 - artikell
   
   </title>
  <meta name="description" content="The royal family never give up">
@@ -201,21 +201,60 @@
             </div>
             <div class="large-9 medium-9 columns">
 
- 
+ <div class="markdown-body">
+<h1>Mysql架构</h1>
+
+<h2 id="toc_0">MySQL核心结构</h2>
+
+<h2 id="toc_1">SQL执行顺序</h2>
+
+<p>MySQL的语句一共分为11步，如下图所标注的那样，最先执行的总是FROM操作，最后执行的是LIMIT操作。<br/>
+<img src="media/15605689231307/15605691055531.jpg" alt=""/></p>
+
+<p>其中每一个操作都会产生一张虚拟的表，这个虚拟的表作为一个处理的输入，只是这些虚拟的表对用户来说是透明的，但是只有最后一个虚拟的表才会被作为结果返回。</p>
+
+<p><em>如果没有在语句中指定某一个子句，那么将会跳过相应的步骤。</em></p>
+
+<pre><code>FROM—&gt;ON—&gt;JOIN—&gt;WHERE—&gt;GROUP BY—&gt;SUM(聚合函数)—&gt;HAVING—&gt;SELECT—&gt;DISTINCT—&gt;UNION—&gt;ORDER BY—&gt;LIMIT
+</code></pre>
 
 
-	
-		<div class="markdown-body">
-		<h1>张雅宸的空间</h1>
+</div>
 
-		<p><a href="https://github.com/zhangyachen/zhangyachen.github.io/issues">张雅宸</a></p>
+<br /><br />
+<hr />
 
+<div class="row clearfix">
+  <div class="large-6 columns">
+	<div class="text-left" style="padding:15px 0px;">
+		
+	</div>
+  </div>
+  <div class="large-6 columns">
+	<div class="text-right" style="padding:15px 0px;">
+		
+	        <a href="15605624219274.html" 
+	        title="Next Post: TCP vs UDP 总结">TCP vs UDP 总结 &raquo;</a>
+	    
+	</div>
+  </div>
+</div>
 
-		</div>
-	
+<div class="row">
+<div style="padding:0px 0.93em;" class="share-comments">
 
-  
-  
+</div>
+</div>
+<script type="text/javascript">
+	$(function(){
+		var currentURL = '15605689231307.html';
+		$('#side-nav a').each(function(){
+			if($(this).attr('href') == currentURL){
+				$(this).parent().addClass('active');
+			}
+		});
+	});
+</script>  
 </div></div>
 
 

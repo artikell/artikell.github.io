@@ -85,6 +85,8 @@
         <li><label>Mysql</label></li>
 
           
+            <li><a title="Mysql架构" href="15605689231307.html">Mysql架构</a></li>
+          
             <li><a title="MYSQL技术内幕学习" href="15602214770128.html">MYSQL技术内幕学习</a></li>
           
             <li><a title="红黑树学习纪要" href="15601369361254.html">红黑树学习纪要</a></li>
@@ -166,6 +168,8 @@
                     
                       <li class="side-title"><span>Mysql</span></li>
                         
+                          <li><a title="Mysql架构" href="15605689231307.html">Mysql架构</a></li>
+                        
                           <li><a title="MYSQL技术内幕学习" href="15602214770128.html">MYSQL技术内幕学习</a></li>
                         
                           <li><a title="红黑树学习纪要" href="15601369361254.html">红黑树学习纪要</a></li>
@@ -211,11 +215,15 @@
 <p>共享表空间和表空间的结构差异？</p>
 </blockquote>
 
+<h3 id="toc_2">表结构</h3>
+
 <p>表空大致结构如下：<br/>
 <img src="media/15602214770128/15602215597762.jpg" alt=""/></p>
 
 <p>在表空间结构下面，是通过分段进行管理，段结构包含常用的数据段、索引段、回滚段。<br/>
 而不同段下面，则是通过分区来进行数据划分，每个区都是1MB，而页面大小都是16KB，所以每个区都拥有64个页。</p>
+
+<h3 id="toc_3">页结构</h3>
 
 <p>页的具体类型有：<br/>
 1. 数据页<br/>
@@ -251,7 +259,7 @@
 
 <p><img src="media/15602214770128/15602367126223.jpg" alt=""/></p>
 
-<h2 id="toc_2">Innodb的功能</h2>
+<h2 id="toc_4">Innodb的功能</h2>
 
 <p>innodb主要是将数据放在一个表空间中进行管理，通过mvcc来获得高并发，同时提供插入缓冲、二次写、自适应哈希索引、预读来支持高性能和高可用。</p>
 
@@ -270,19 +278,27 @@ IO Thread，负责处理大量的IO操作<br/>
 Purge Thread，负责回收已经使用的undolog页面<br/>
 Page cleaner Thread，负责将脏页刷新至磁盘</p>
 
-<p>内存分布：<br/>
-缓冲池是一个大的内存块，其中包括：索引页、数据页、undo页等。<br/>
+<h3 id="toc_5">内存分布</h3>
+
+<p>缓冲池是一个大的内存块，其中包括：索引页、数据页、undo页等。<br/>
 而刷新页面算法则通过LRU List算法来更新，而为了保证更好的效率，则新的页面会先插入midpoint位置上。<br/>
 Free List和Flush List的功能和名字相同，一个是管理无用内存页列表，一个是管理脏页的列表。</p>
 
 <p><img src="media/15602214770128/15602435608389.jpg" alt=""/></p>
 
-<p>重做日志缓冲<br/>
-1. Master Thread每一秒会刷新一次重做日志<br/>
-2. 事务提交会刷新一次重做日志<br/>
-3. 缓冲池小于1/2时，刷新重做日志</p>
+<h3 id="toc_6">重做日志缓冲</h3>
 
-<p>Innodb特征</p>
+<ol>
+<li>Master Thread每一秒会刷新一次重做日志</li>
+<li>事务提交会刷新一次重做日志</li>
+<li>缓冲池小于1/2时，刷新重做日志</li>
+</ol>
+
+<h2 id="toc_7">相关链接</h2>
+
+<ul>
+<li><a href="https://draveness.me/mysql-innodb.html">https://draveness.me/mysql-innodb.html</a></li>
+</ul>
 
 
 </div>

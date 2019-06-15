@@ -85,6 +85,8 @@
         <li><label>Mysql</label></li>
 
           
+            <li><a title="Mysql架构" href="15605689231307.html">Mysql架构</a></li>
+          
             <li><a title="MYSQL技术内幕学习" href="15602214770128.html">MYSQL技术内幕学习</a></li>
           
             <li><a title="红黑树学习纪要" href="15601369361254.html">红黑树学习纪要</a></li>
@@ -166,6 +168,8 @@
                     
                       <li class="side-title"><span>Mysql</span></li>
                         
+                          <li><a title="Mysql架构" href="15605689231307.html">Mysql架构</a></li>
+                        
                           <li><a title="MYSQL技术内幕学习" href="15602214770128.html">MYSQL技术内幕学习</a></li>
                         
                           <li><a title="红黑树学习纪要" href="15601369361254.html">红黑树学习纪要</a></li>
@@ -202,94 +206,27 @@
 
 	
 		<div class="markdown-body">
-		<h1>MYSQL技术内幕学习</h1>
+		<h1>Mysql架构</h1>
 
-		<h2 id="toc_0">前言</h2>
+		<h2 id="toc_0">MySQL核心结构</h2>
 
-<h2 id="toc_1">表空间结构</h2>
+<h2 id="toc_1">SQL执行顺序</h2>
 
-<p>首先，整个表空间分别由段、区、页组成。其中包含了数据、索引、插入缓冲bitmap页。<br/>
-而，其他例如undo、redo、插入缓冲索引也、事务信息等，都是在<em>共享表空间</em>中。</p>
+<p>MySQL的语句一共分为11步，如下图所标注的那样，最先执行的总是FROM操作，最后执行的是LIMIT操作。<br/>
+<img src="media/15605689231307/15605691055531.jpg" alt=""/></p>
 
-<blockquote>
-<p>共享表空间和表空间的结构差异？</p>
-</blockquote>
+<p>其中每一个操作都会产生一张虚拟的表，这个虚拟的表作为一个处理的输入，只是这些虚拟的表对用户来说是透明的，但是只有最后一个虚拟的表才会被作为结果返回。</p>
 
-<p>表空大致结构如下：<br/>
-<img src="media/15602214770128/15602215597762.jpg" alt=""/></p>
+<p><em>如果没有在语句中指定某一个子句，那么将会跳过相应的步骤。</em></p>
 
-<p>在表空间结构下面，是通过分段进行管理，段结构包含常用的数据段、索引段、回滚段。<br/>
-而不同段下面，则是通过分区来进行数据划分，每个区都是1MB，而页面大小都是16KB，所以每个区都拥有64个页。</p>
-
-<p>页的具体类型有：<br/>
-1. 数据页<br/>
-2. undo页<br/>
-3. 系统页<br/>
-4. 事务数据页<br/>
-5. 插入缓冲位图页<br/>
-6. 插入缓冲空闲列表页<br/>
-7. 未压缩二进制大对象页<br/>
-8. 压缩二进制大对象页</p>
-
-<p>每页则是通过行来进行组成。<br/>
-行的类型包含Compact和Redundant2种格式存放。<br/>
-<img src="media/15602214770128/15602252233925.jpg" alt="Compact格式"/></p>
-
-<p><img src="media/15602214770128/15602252363913.jpg" alt="Redundant格式"/></p>
-
-<p>2者差异在于，头部的数据，一个只给出变长字段长度列表，一个给出所有字段长度列表，这样前者节约了大量空间。而对于text和blob数据类型，为了保证每个页中至少存在2行数据，所以，当text的数据超过一点长度（768b）后，会尝试创建创建未压缩数据页。</p>
-
-<p>InnoDB Plugin引入了新的文件格式（file format，可以理解为新的页格式），对于以前支持的Compact和Redundant格式将其称为Antelope文件格式，新的文件格式称为Barracuda。Barracuda文件格式下拥有两种新的行记录格式Compressed和Dynamic两种。新的两种格式对于存放BLOB的数据采用了完全的行溢出的方式，在数据页中只存放20个字节的指针，实际的数据都存放在BLOB Page中，而之前的Compact和Redundant两种格式会存放768个前缀字节。</p>
-
-<p>数据页结构<br/>
-1. File Header - 文件头，记录页的头部信息，特征以及页面类型<br/>
-2. Page Header - 页头，该部分记录数据页的状态信息<br/>
-3. Infimun 和 Supremun Records，虚拟行，标记最大和最小边界<br/>
-4. User Records - 行记录，实际存储的地址<br/>
-5. Free space - 空闲空间<br/>
-6. Page Directory - 页目录<br/>
-7. File Trailer - 文件尾</p>
-
-<p>其中，文件头、页头、文件尾大小固定，分别为38、56、8字节。<br/>
-<img src="media/15602214770128/15602342959727.jpg" alt=""/></p>
-
-<p><img src="media/15602214770128/15602367126223.jpg" alt=""/></p>
-
-<h2 id="toc_2">Innodb的功能</h2>
-
-<p>innodb主要是将数据放在一个表空间中进行管理，通过mvcc来获得高并发，同时提供插入缓冲、二次写、自适应哈希索引、预读来支持高性能和高可用。</p>
-
-<p>innodb存储引擎主要支持请求处理：<br/>
-1. 维护所有线程的数据结构<br/>
-2. 缓存磁盘上的数据<br/>
-3. 重做日志的缓存<br/>
-... ...</p>
-
-<p><img src="media/15602214770128/15602371597989.jpg" alt=""/></p>
-
-<p>后台线程主要负责刷新内存池中的数据，保证数据是最新的。</p>
-
-<p>Master Thread，主要负责将缓冲池的数据异步刷新到磁盘，保证数据一致性，<br/>
-IO Thread，负责处理大量的IO操作<br/>
-Purge Thread，负责回收已经使用的undolog页面<br/>
-Page cleaner Thread，负责将脏页刷新至磁盘</p>
-
-<p>内存分布：<br/>
-缓冲池是一个大的内存块，其中包括：索引页、数据页、undo页等。<br/>
-而刷新页面算法则通过LRU List算法来更新，而为了保证更好的效率，则新的页面会先插入midpoint位置上。<br/>
-Free List和Flush List的功能和名字相同，一个是管理无用内存页列表，一个是管理脏页的列表。</p>
-
-<p><img src="media/15602214770128/15602435608389.jpg" alt=""/></p>
-
-<p>重做日志缓冲<br/>
-1. Master Thread每一秒会刷新一次重做日志<br/>
-2. 事务提交会刷新一次重做日志<br/>
-3. 缓冲池小于1/2时，刷新重做日志</p>
-
-<p>Innodb特征</p>
+<pre><code>FROM—&gt;ON—&gt;JOIN—&gt;WHERE—&gt;GROUP BY—&gt;SUM(聚合函数)—&gt;HAVING—&gt;SELECT—&gt;DISTINCT—&gt;UNION—&gt;ORDER BY—&gt;LIMIT
+</code></pre>
 
 
 		</div>
+	
+
+ 
 	
 
  
