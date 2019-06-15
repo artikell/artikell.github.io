@@ -4,7 +4,7 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2019-06-15T11:38:08+08:00</updated>
+  <updated>2019-06-15T14:36:33+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -12,6 +12,138 @@
   </author>
   <generator uri="http://www.mweb.im">MWeb</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[缓存总结]]></title>
+    <link href="https://artikell.github.io/15605709598391.html"/>
+    <updated>2019-06-15T11:55:59+08:00</updated>
+    <id>https://artikell.github.io/15605709598391.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">缓存介绍</h2>
+
+<h3 id="toc_1">什么是缓存？</h3>
+
+<p>缓存就是数据交换的缓冲区（称作：Cache），当某一硬件要读取数据时，会首先从缓存汇总查询数据，有则直接执行，不存在时从内存中获取。由于缓存的数据比内存快的多，所以缓存的作用就是帮助硬件更快的运行。</p>
+
+<h3 id="toc_2">缓存的分类</h3>
+
+<p>缓存在系统的各个阶段都存在：<br/>
+* 操作系统磁盘缓存 ——&gt; 减少磁盘机械操作。<br/>
+* 数据库缓存——&gt;减少文件系统IO。<br/>
+* 应用程序缓存——&gt;减少对数据库的查询。<br/>
+* Web服务器缓存——&gt;减少应用服务器请求。<br/>
+* 客户端浏览器缓存——&gt;减少对网站的访问。</p>
+
+<h3 id="toc_3">缓存的问题</h3>
+
+<p>在具体了解缓存问题之前先来明确几个术语：</p>
+
+<p><strong>缓存命中率</strong>：从缓存中得到数据的请求数与所有请求数的比率。理想状态是越高越好。<br/>
+<strong>过期内容</strong>：超过设置的有效时间，被标记为“陈旧”的内容。通常过期内容不能用于回复客户端的请求，必须重新向源服务器请求新的内容或者验证缓存的内容是否仍然准备。<br/>
+<strong>验证</strong>：验证缓存中的过期内容是否仍然有效，验证通过的话刷新过期时间。<br/>
+<strong>失效</strong>：失效就是把内容从缓存中移除。当内容发生改变时就必须移除失效的内容。</p>
+
+<p>缓存的使用不可避免的会带来更新的问题，如何更新是一个难题。而缓存更新又会带来几个问题：、</p>
+
+<ol>
+<li>大量查询不存在的缓存，导致缓存穿透</li>
+<li>大量缓存更新，导致大部分不命中缓存，导致更新雪崩</li>
+<li>大量请求命中单一缓存，缓存更新时，导致命中失败，则发生缓存击穿</li>
+<li>同时，是先更新缓存，还是先更新数据，也是一个问题，前者可能出现数据异常，后者可能出现数据延时</li>
+</ol>
+
+<p>之后我们就一一来讨论以上问题。</p>
+
+<h3 id="toc_4">缓存更新方式</h3>
+
+<p>更新时序的方法有3种：<br/>
+1. Cache Aside 更新模式实现起来比较简单，但是需要维护两个数据存储，一个是缓存（Cache），一个是数据库（Repository）。<br/>
+2. Read/Write Through 更新模式只需要维护一个数据存储（缓存），但是实现起来要复杂一些。<br/>
+3. Write Behind Caching 更新模式和Read/Write Through 更新模式类似，区别是Write Behind Caching 更新模式的数据持久化操作是异步的，但是Read/Write Through 更新模式的数据持久化操作是同步的。</p>
+
+<p>以下我们主要介绍第一种Cache Aside。</p>
+
+<h4 id="toc_5">更新缓存 VS 淘汰缓存</h4>
+
+<p>什么是更新缓存：数据不但写入数据库，还会写入缓存<br/>
+什么是淘汰缓存：数据只会写入数据库，不会写入缓存，只会把数据淘汰掉</p>
+
+<p>更新缓存的优点：缓存不会增加一次miss，命中率高<br/>
+淘汰缓存的优点：简单</p>
+
+<p>那到底是选择更新缓存还是淘汰缓存呢，主要取决于“更新缓存的复杂度”。</p>
+
+<blockquote>
+<p>更新缓存的代价很小，此时我们应该更倾向于更新缓存，以保证更高的缓存命中率</p>
+</blockquote>
+
+<h4 id="toc_6">先操作数据库 vs 先操作缓存</h4>
+
+<p>当写操作发生时，假设淘汰缓存作为对缓存通用的处理方式，又面临两种抉择：</p>
+
+<p>（1）先写数据库，再淘汰缓存<br/>
+（2）先淘汰缓存，再写数据库</p>
+
+<p>究竟采用哪种时序呢？<br/>
+对于一个不能保证事务性的操作，一定涉及“哪个任务先做，哪个任务后做”的问题，解决这个问题的方向是：<br/>
+如果出现不一致，谁先做对业务的影响较小，就谁先执行。<br/>
+由于写数据库与淘汰缓存不能保证原子性，谁先谁后同样要遵循上述原则。</p>
+
+<p>假设先写数据库，再淘汰缓存：第一步写数据库操作成功，第二步淘汰缓存失败，则会出现DB中是新数据，Cache中是旧数据，数据不一致。<br/>
+假设先淘汰缓存，再写数据库：第一步淘汰缓存成功，第二步写数据库失败，则只会引发一次Cache miss。</p>
+
+<blockquote>
+<p>结论：数据和缓存的操作时序，结论是清楚的：先淘汰缓存，再写数据库。</p>
+</blockquote>
+
+<h4 id="toc_7">结论强调</h4>
+
+<p>（1）淘汰缓存是一种通用的缓存处理方式<br/>
+（2）先淘汰缓存，再写数据库的时序是毋庸置疑的<br/>
+（3）服务化是向业务方屏蔽底层数据库与缓存复杂性的一种通用方式</p>
+
+<h3 id="toc_8">缓存异常问题</h3>
+
+<h4 id="toc_9">缓存穿透</h4>
+
+<p>缓存穿透是指查询一个一定不存在的数据，因为缓存中也无该数据的信息，则会直接去数据库层进行查询，从系统层面来看像是穿透了缓存层直接达到db，从而称为缓存穿透</p>
+
+<h5 id="toc_10">解决方案</h5>
+
+<p><strong>bloom filter</strong>：类似于哈希表的一种算法，用所有可能的查询条件生成一个bitmap，在进行数据库查询之前会使用这个bitmap进行过滤，如果不在其中则直接过滤，从而减轻数据库层面的压力。</p>
+
+<p><strong>空值缓存</strong>：一种比较简单的解决办法，在第一次查询完不存在的数据后，将该key与对应的空值也放入缓存中，只不过设定为较短的失效时间，例如几分钟，这样则可以应对短时间的大量的该key攻击，设置为较短的失效时间是因为该值可能业务无关，存在意义不大，且该次的查询也未必是攻击者发起，无过久存储的必要，故可以早点失效。</p>
+
+<h4 id="toc_11">缓存雪崩</h4>
+
+<p>在普通的缓存系统中一般例如redis、memcache等中，我们会给缓存设置一个失效时间，但是如果所有的缓存的失效时间相同，那么在同一时间失效时，所有系统的请求都会发送到数据库层，db可能无法承受如此大的压力导致系统崩溃。</p>
+
+<h5 id="toc_12">解决方案</h5>
+
+<p><strong>线程互斥</strong>：只让一个线程构建缓存，其他线程等待构建缓存的线程执行完，重新从缓存获取数据才可以，每个时刻只有一个线程在执行请求，减轻了db的压力，但缺点也很明显，降低了系统的qps。</p>
+
+<p><strong>交错失效时间</strong>：这种方法时间比较简单粗暴，既然在同一时间失效会造成请求过多雪崩，那我们错开不同的失效时间即可从一定长度上避免这种问题，在缓存进行失效时间设置的时候，从某个适当的值域中随机一个时间作为失效时间即可。</p>
+
+<h4 id="toc_13">缓存击穿</h4>
+
+<p>缓存击穿实际上是缓存雪崩的一个特例，大家使用过微博的应该都知道，微博有一个热门话题的功能，用户对于热门话题的搜索量往往在一些时刻会大大的高于其他话题，这种我们成为系统的“热点“，由于系统中对这些热点的数据缓存也存在失效时间，在热点的缓存到达失效时间时，此时可能依然会有大量的请求到达系统，没有了缓存层的保护，这些请求同样的会到达db从而可能引起故障。击穿与雪崩的区别即在于击穿是对于特定的热点数据来说，而雪崩是全部数据。</p>
+
+<h5 id="toc_14">解决方案</h5>
+
+<p><strong>二级缓存</strong>：对于热点数据进行二级缓存，并对于不同级别的缓存设定不同的失效时间，则请求不会直接击穿缓存层到达数据库。</p>
+
+<p><strong>LRU算法</strong>： 算法根据数据的历史访问记录来进行淘汰数据，其核心思想是“如果数据最近被访问过，那么将来被访问的几率也更高”。最常见的实现是使用一个链表保存缓存数据。</p>
+
+<h2 id="toc_15">相关链接</h2>
+
+<ul>
+<li><a href="https://www.cnblogs.com/duanxz/p/3740595.html">https://www.cnblogs.com/duanxz/p/3740595.html</a></li>
+<li><a href="https://blog.csdn.net/chengxuyuan_110/article/details/81060865">https://blog.csdn.net/chengxuyuan_110/article/details/81060865</a></li>
+<li><a href="https://blog.csdn.net/arenn/article/details/81490649">https://blog.csdn.net/arenn/article/details/81490649</a></li>
+</ul>
+
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[Mysql架构]]></title>
@@ -1851,133 +1983,6 @@ while (x &amp;&amp; zslLexValueLteMax(x-&gt;ele,range)) {
 
 <ul>
 <li><a href="https://www.cnblogs.com/lizhenghn/p/5322887.html">Redis常用数据类型介绍、使用场景及其操作命令</a></li>
-</ul>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[Redis Bio模块的学习]]></title>
-    <link href="https://artikell.github.io/15286278830553.html"/>
-    <updated>2018-06-10T18:51:23+08:00</updated>
-    <id>https://artikell.github.io/15286278830553.html</id>
-    <content type="html"><![CDATA[
-<h2 id="toc_0">前言</h2>
-
-<p><em>Redis</em>宣称的单进程的程序，但是，源码中到处都有为了防止顺序混乱的代码，之后，在淘汰机制中发现了<em>dbAsyncDelete</em>函数，才了解到<em>Redis</em>本身的存在异步操作的，现在，我们来看看异步IO都做了什么处理吧。</p>
-
-<h2 id="toc_1">Bio的功能</h2>
-
-<p>Bio模块本身代码不多，可以一一来介绍各个函数的功能，首先，我们看看线程相关的一下对象。</p>
-
-<h3 id="toc_2">线程相关对象</h3>
-
-<pre><code>static pthread_t bio_threads[BIO_NUM_OPS];  //BIO线程
-static pthread_mutex_t bio_mutex[BIO_NUM_OPS]; //BIO每个线程的mutex锁变量
-static pthread_cond_t bio_newjob_cond[BIO_NUM_OPS]; //BIO线程锁的条件变量， 监听这个条件变量唤起当前线程
-static pthread_cond_t bio_step_cond[BIO_NUM_OPS]; //BIO线程阻塞锁，bioWaitStepOfType监听这个条件变量被通知该操作的执行。
-static list *bio_jobs[BIO_NUM_OPS];
-static unsigned long long bio_pending[BIO_NUM_OPS]; // BIO未执行的
-</code></pre>
-
-<p>从中我们可以看出，线程本身是作为一个变量存储，同时，对于每个线程，都有相关的锁以及锁条件。</p>
-
-<p>同时，<em>Redis</em>中的线程，为每种类型的操作都分配了一个线程进行处理，其中拥有3中类型：</p>
-
-<pre><code>#define BIO_CLOSE_FILE    0 /* Deferred close(2) syscall. */
-#define BIO_AOF_FSYNC     1 /* Deferred AOF fsync. */
-#define BIO_LAZY_FREE     2 /* Deferred objects freeing. */
-</code></pre>
-
-<p>这样可以很好的控制线程的数量，这也是为什么<em>Redis</em>会设置一个<em>jobs</em>列表来存储任务的原因。</p>
-
-<h3 id="toc_3">bioInit 函数</h3>
-
-<p>bioInit函数是在整个Redis服务启动时调用，源码如下：</p>
-
-<pre><code>void bioInit(void) {
-    pthread_attr_t attr;
-    pthread_t thread;
-    size_t stacksize;
-    int j;
-
-    /* Initialization of state vars and objects */
-    for (j = 0; j &lt; BIO_NUM_OPS; j++) {
-        pthread_mutex_init(&amp;bio_mutex[j],NULL);
-        pthread_cond_init(&amp;bio_newjob_cond[j],NULL);
-        pthread_cond_init(&amp;bio_step_cond[j],NULL);
-        bio_jobs[j] = listCreate();
-        bio_pending[j] = 0;
-    }
-
-    /* Set the stack size as by default it may be small in some system */
-    pthread_attr_init(&amp;attr);
-    pthread_attr_getstacksize(&amp;attr,&amp;stacksize);
-    if (!stacksize) stacksize = 1; /* The world is full of Solaris Fixes */
-    while (stacksize &lt; REDIS_THREAD_STACK_SIZE) stacksize *= 2;
-    pthread_attr_setstacksize(&amp;attr, stacksize);
-
-    for (j = 0; j &lt; BIO_NUM_OPS; j++) {
-        void *arg = (void*)(unsigned long) j;
-        if (pthread_create(&amp;thread,&amp;attr,bioProcessBackgroundJobs,arg) != 0) {
-            serverLog(LL_WARNING,&quot;Fatal: Can&#39;t initialize Background Jobs.&quot;);
-            exit(1);
-        }
-        bio_threads[j] = thread;
-    }
-}
-</code></pre>
-
-<p>在BIO初始化时，首先是对线程相关的对象进行初始化，包括<em>线程锁、锁条件、线程队列</em>等。<br/>
-在之后，通过<em>pthread_attr_init</em>函数对线程环境进行初始化，并对栈大小进行重设。<br/>
-最后，根据<em>线程环境</em>创建了一系列的线程，用于后续使用。</p>
-
-<h3 id="toc_4">bioCreateBackgroundJob 函数</h3>
-
-<p>该函数主要是用于添加一个异步任务，传入的参数比较简单，包括Type和3个变量。这些都存储在bio_job结构体中：</p>
-
-<pre><code>struct bio_job {
-    time_t time; /* Time at which the job was created. */
-    void *arg1, *arg2, *arg3;
-};
-</code></pre>
-
-<p>关于为啥是3个变量，主要是针对不同类型的异步事件使用，3个变量的排列组合共有8种，差不多够用了。<br/>
-代码中主要是对于惰性淘汰进行分类：若第一个指针，则代表释放object；第二个指针代表释放一个数据库；第三个指针代表释放一个哈希表。</p>
-
-<p><em>bioCreateBackgroundJob</em> 函数在赋值完，会将相关的线程进行唤醒让其来主动处理队列中的任务。这其中的逻辑与协程相似，但却有所不同。</p>
-
-<h3 id="toc_5">bioProcessBackgroundJobs 函数</h3>
-
-<p>该函数在创建线程后，会直接执行，那么本身对线程做了一些设定：<br/>
-<code><br/>
-    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);<br/>
-    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);<br/>
-</code><br/>
-首先，使线程保持可控制性，这样能线程能被杀死，这样做的目的暂时是为了debug调试。</p>
-
-<p>之后，函数对线程进行了信号量的设置：</p>
-
-<pre><code>sigemptyset(&amp;sigset);
-sigaddset(&amp;sigset, SIGALRM);
-if (pthread_sigmask(SIG_BLOCK, &amp;sigset, NULL))
-    serverLog(LL_WARNING,
-        &quot;Warning: can&#39;t mask SIGALRM in bio.c thread: %s&quot;, strerror(errno));
-</code></pre>
-
-<p>这个之后可以多了解一番。</p>
-
-<p>之后，函数就进入了一个死循环用来不断的处理来自队列的任务，包括AOF同步等。</p>
-
-<h2 id="toc_6">总结</h2>
-
-<p><em>Redis</em>的线程使用比较谨慎，其中仅仅只包含3种类型的线程事件。这样保证了Redis本身代码的简洁。</p>
-
-<h2 id="toc_7">相关链接</h2>
-
-<ul>
-<li><a href="https://www.cnblogs.com/lijunamneg/archive/2013/01/25/2877211.html">线程取消</a></li>
-<li><a href="https://yq.aliyun.com/articles/58703?utm_source=tool.lu">bio学习</a></li>
 </ul>
 
 ]]></content>
