@@ -2,7 +2,12 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url>
   <loc>https://artikell.github.io/</loc>
-  <lastmod>2019-06-15T09:28:16+08:00</lastmod>
+  <lastmod>2019-06-15T09:32:17+08:00</lastmod>
+</url>
+
+<url>
+  <loc>https://artikell.github.io/15605621287027.html</loc>
+  <lastmod>2019-06-15T09:28:48+08:00</lastmod>
 </url>
 
 <url>
@@ -130,6 +135,10 @@
 
 <url>
   <loc>https://artikell.github.io/Feature.html</loc>
+</url>
+
+<url>
+  <loc>https://artikell.github.io/Friends.html</loc>
 </url>
 
 

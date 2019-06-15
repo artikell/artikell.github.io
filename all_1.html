@@ -105,6 +105,14 @@
           
 
       
+        <li class="divider"></li>
+        <li><label>Friends</label></li>
+
+          
+            <li><a title="张雅宸的空间" href="15605621287027.html">张雅宸的空间</a></li>
+          
+
+      
       </ul>
     </aside>
 
@@ -172,6 +180,12 @@
                         
 
                     
+                      <li class="side-title"><span>Friends</span></li>
+                        
+                          <li><a title="张雅宸的空间" href="15605621287027.html">张雅宸的空间</a></li>
+                        
+
+                    
                   </ul>
                 </nav>
                 </div>
@@ -184,242 +198,85 @@
 
 	
 		<div class="markdown-body">
-		<h1>Redis 淘汰策略解读</h1>
+		<h1>Redis 字典扫描算法</h1>
 
 		<h2 id="toc_0">前言</h2>
 
-<p><em>Redis</em>本身是一款高效的内存数据库，内存数据库中很重要的一点在于能很好的利用并管理内存，这也衍生出了内存淘汰策略，这和操作系统的内存页管理机制相同，拥有各种淘汰算法，例如：FIFO、LRU、OPT等，这次我们主要是讨论一下关于<em>Redis</em>本身的内存淘汰策略。</p>
+<p>字典扫描算法包含了2个特别精巧的位运算算法，2者保证了整个扫描过程即使穿插了重哈希操作也不会顺序混合。</p>
 
-<!--more-->
+<h2 id="toc_1">问题一：反转一个数</h2>
 
-<h2 id="toc_1">过期键淘汰逻辑</h2>
+<p>如何快速反转一个数，正常往往都是<em>O(n)</em>的算法，虽然数字正常不会超过64位，但是，<em>Redis</em>使用了更加位运算将其复杂度减低至了<em>O(logn)</em>。</p>
 
-<p>淘汰逻辑<em>Redis</em>本身存在2种方式的淘汰并存，这样做的目的也是为了提高效率。</p>
+<p>首先，考虑对于一个二进制数：11010100(212)，如何进行反转？</p>
 
-<h3 id="toc_2">惰性淘汰逻辑</h3>
+<p>第一次反转，反转4位：</p>
 
-<p><em>Redis</em>当键值已经超出失效时间时，是无法做到及时的将内存进行空闲出来，同时考虑到及时的将内存空闲出来会需要有十分高的成本。<br/>
-于是<em>Redis</em>将淘汰功能，下发至各个命令操作中，当有客户端对相关的键进行访问时，命令将会调用<em>expireIfNeeded</em>方法来判断键值是否已经失效，若是，则将其删除。</p>
-
-<pre><code>int expireIfNeeded(redisDb *db, robj *key) {
-    mstime_t when = getExpire(db,key);
-    
-    mstime_t now;
-
-    if (when &lt; 0) return 0;
-
-    if (server.loading) return 0;
-
-    now = server.lua_caller ? server.lua_time_start : mstime();
-
-    if (server.masterhost != NULL) return now &gt; when;
-
-    if (now &lt;= when) return 0;
-
-    server.stat_expiredkeys++;
-    propagateExpire(db,key,server.lazyfree_lazy_expire);
-    notifyKeyspaceEvent(NOTIFY_EXPIRED,
-        &quot;expired&quot;,key,db-&gt;id);
-    return server.lazyfree_lazy_expire ? dbAsyncDelete(db,key) :
-                                         dbSyncDelete(db,key);
-}
+<pre><code>mask = 0000 1111
+1101 0100 &gt;&gt; 4 &amp; 0000 1111 = 0000 1101
+1101 0100 &lt;&lt; 4 &amp; 1111 0000 = 0100 0000
+0000 1101 | 0100 0000 = 0100 1101
 </code></pre>
 
-<p><em>expireIfNeeded</em>函数大致逻辑如下：<br/>
-1. 获取当前键的失效时间<br/>
-2. 判断失效时间是否小于0，是则表示不失效<br/>
-3. 判断当前服务器是否正在加载数据信息<br/>
-4. 获取当前时间<br/>
-5. 判断是否已经失效<br/>
-6. 统计失效键信息<br/>
-7. 发送失效键信息至其余节点<br/>
-8. 发送键失效通知给订阅通道<br/>
-9. 键值删除</p>
+<p>第二次反转，反转2位：</p>
 
-<blockquote>
-<p>其中键删除操作包括同步删除和异步删除，这次不进行细讲</p>
-</blockquote>
-
-<h3 id="toc_3">主动淘汰逻辑</h3>
-
-<p>消极方法的缺点是，如果<em>key</em>迟迟不被访问，就会占用很多内存空间。 所以就产生的主动淘汰：此方法利用了<em>Redis</em>的时间事件，即每隔一段时间就中断一下完成一些指定操作，其中就包括检查并删除失效主键。<br/>
-主动淘汰机制相关的配置项为<em>set-active-expire</em>，主要的调用位置为：<em>beforeSleep</em> 和 <em>databasesCron</em> ，一个是事件循环前触发，一个是数据库定时触发。</p>
-
-<pre><code>void activeExpireCycle(int type) {
-    static unsigned int current_db = 0; /* Last DB tested. */
-    static int timelimit_exit = 0;      /* Time limit hit in previous call? */
-    static long long last_fast_cycle = 0; /* When last fast cycle ran. */
-
-    int j, iteration = 0;
-    int dbs_per_call = CRON_DBS_PER_CALL;
-    long long start = ustime(), timelimit, elapsed;
-
-    if (clientsArePaused()) return;
-
-    if (type == ACTIVE_EXPIRE_CYCLE_FAST) {
-        if (!timelimit_exit) return;
-        if (start &lt; last_fast_cycle + ACTIVE_EXPIRE_CYCLE_FAST_DURATION*2) return;
-        last_fast_cycle = start;
-    }
-
-    if (dbs_per_call &gt; server.dbnum || timelimit_exit)
-        dbs_per_call = server.dbnum;
-
-    timelimit = 1000000*ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC/server.hz/100;
-    timelimit_exit = 0;
-    if (timelimit &lt;= 0) timelimit = 1;
-
-    if (type == ACTIVE_EXPIRE_CYCLE_FAST)
-        timelimit = ACTIVE_EXPIRE_CYCLE_FAST_DURATION; /* in microseconds. */
-
-    long total_sampled = 0;
-    long total_expired = 0;
-
-    for (j = 0; j &lt; dbs_per_call &amp;&amp; timelimit_exit == 0; j++) {
-        int expired;
-        redisDb *db = server.db+(current_db % server.dbnum);
-
-        current_db++;
-        do {
-            unsigned long num, slots;
-            long long now, ttl_sum;
-            int ttl_samples;
-            iteration++;
-
-            if ((num = dictSize(db-&gt;expires)) == 0) {
-                db-&gt;avg_ttl = 0;
-                break;
-            }
-            slots = dictSlots(db-&gt;expires);
-            now = mstime();
-            
-            if (num &amp;&amp; slots &gt; DICT_HT_INITIAL_SIZE &amp;&amp;
-                (num*100/slots &lt; 1)) break;
-
-            expired = 0;
-            ttl_sum = 0;
-            ttl_samples = 0;
-
-            if (num &gt; ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP)
-                num = ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP;
-
-            while (num--) {
-                dictEntry *de;
-                long long ttl;
-
-                if ((de = dictGetRandomKey(db-&gt;expires)) == NULL) break;
-                ttl = dictGetSignedIntegerVal(de)-now;
-                if (activeExpireCycleTryExpire(db,de,now)) expired++;
-                if (ttl &gt; 0) {
-                    /* We want the average TTL of keys yet not expired. */
-                    ttl_sum += ttl;
-                    ttl_samples++;
-                }
-                total_sampled++;
-            }
-            total_expired += expired;
-
-            if (ttl_samples) {
-                long long avg_ttl = ttl_sum/ttl_samples;
-
-                if (db-&gt;avg_ttl == 0) db-&gt;avg_ttl = avg_ttl;
-                db-&gt;avg_ttl = (db-&gt;avg_ttl/50)*49 + (avg_ttl/50);
-            }
-
-            if ((iteration &amp; 0xf) == 0) { /* check once every 16 iterations. */
-                elapsed = ustime()-start;
-                if (elapsed &gt; timelimit) {
-                    timelimit_exit = 1;
-                    server.stat_expired_time_cap_reached_count++;
-                    break;
-                }
-            }
-        } while (expired &gt; ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP/4);
-    }
-
-    elapsed = ustime()-start;
-    latencyAddSampleIfNeeded(&quot;expire-cycle&quot;,elapsed/1000);
-
-    double current_perc;
-    if (total_sampled) {
-        current_perc = (double)total_expired/total_sampled;
-    } else
-        current_perc = 0;
-    server.stat_expired_stale_perc = (current_perc*0.05)+
-                                     (server.stat_expired_stale_perc*0.95);
-}
-
+<pre><code>mask = 0000 1111 ^ 0011 1100  = 0011 0011
+0100 1101 &gt;&gt; 2 &amp; 0011 0011 = 0001 0011
+0100 1101 &lt;&lt; 2 &amp; 1100 1100 = 0000 0100
+0001 0011 | 0000 0100 = 0001 0111
 </code></pre>
 
-<p><em>activeExpireCycle</em>函数关键点如下：<br/>
-1. 函数提供了 <em>ACTIVE_EXPIRE_CYCLE_FAST</em> 和 <em>ACTIVE_EXPIRE_CYCLE_SLOW</em> 2种模式，区别在于：FAST模式本身对时间有苛刻的要求，不允许淘汰键导致过高的延时，所以会有一个超时时间(1000ms)的限制。<br/>
-2. 函数会遍历每个数据库，然后从过期键中获取20个值，若20个中淘汰了5个，则继续淘汰，尽可能的保证过期比例小于0.25。<br/>
-3. 其中，函数会统计相关的超时情况以及淘汰时间等。</p>
+<p>第三次反转，反转1位：</p>
 
-<h2 id="toc_4">内存淘汰策略</h2>
-
-<p>内存淘汰策略的设置项为<em>maxmemory-policy</em>，其中拥有6种策略：<br/>
-1. <em>noeviction</em>策略(不淘汰策略)<br/>
-    该策略不进行内存淘汰，当内存达到阀值后，将会报错。但该策略为默认策略，所以每次启用<em>Redis</em>服务时，最好是设置一下淘汰策略<br/>
-2. <em>allkeys-lru</em>策略(主键lru策略)<br/>
-    在主键空间中，优先移除最近未使用的key。<br/>
-3. <em>volatile-lru</em>策略(过期键lru策略)<br/>
-    在设置了过期时间的键空间中，优先移除最近未使用的key。<br/>
-4. <em>allkeys-random</em>策略(主键随机淘汰策略)<br/>
-    在主键空间中，随机移除某个key。<br/>
-5. <em>volatile-random</em>策略(过期键随机淘汰策略)<br/>
-    在设置了过期时间的键空间中，随机移除某个key。<br/>
-6. <em>volatile-ttl</em>策略(过期键fifo策略)<br/>
-    在设置了过期时间的键空间中，具有更早过期时间的key优先移除。</p>
-
-<p>对于不同淘汰机制，也存在相关的使用场景：<br/>
-1. <em>allkeys-lru</em>：如果我们的应用对缓存的访问符合幂律分布（也就是存在相对热点数据），或者我们不太清楚我们应用的缓存访问分布状况，我们可以选择<em>allkeys-lru</em>策略。<br/>
-2. <em>allkeys-random</em>：如果我们的应用对于缓存<em>key</em>的访问概率相等，则可以使用这个策略。<br/>
-3. <em>volatile-ttl</em>：这种策略使得我们可以向<em>Redis</em>提示哪些<em>key</em>更适合被<em>eviction</em>。</p>
-
-<h2 id="toc_5">内存淘汰逻辑</h2>
-
-<p>内存超限淘汰机制与上述的过期键淘汰机制不同，它本身存在触发的条件是在于每次定时请求，若发现内存不足时，将会进行键值淘汰，来保证正常运行。</p>
-
-<p>与过期键淘汰函数<em>expireIfNeeded</em>对应的函数为：<em>freeMemoryIfNeeded</em>函数，它将会在定时事件和脚本运行时进行内存检查。它主要的判断条件为当前服务是否设置了<em>maxmemory</em>，若设置了则需要进行内存淘汰。</p>
-
-<p><em>freeMemoryIfNeeded</em>函数本身针对不同的淘汰策略会有不同的逻辑。主要分为随机淘汰和策略淘汰。</p>
-
-<h3 id="toc_6">内存随机淘汰</h3>
-
-<p>随机淘汰的实现相对简单，只需要对不同的空间进行随机筛选键，并进内存释放即可。</p>
-
-<pre><code>for (i = 0; i &lt; server.dbnum; i++) {
-    j = (++next_db) % server.dbnum;
-    db = server.db+j;
-    dict = (server.maxmemory_policy == MAXMEMORY_ALLKEYS_RANDOM) ?
-            db-&gt;dict : db-&gt;expires;
-    if (dictSize(dict) != 0) {
-        de = dictGetRandomKey(dict);
-        bestkey = dictGetKey(de);
-        bestdbid = j;
-        break;
-    }
-}
+<pre><code>mask = 0110 0110 ^ 0011 0011  = 0101 0101
+0001 0111 &gt;&gt; 1 &amp; 0101 0101 = 0000 0001
+0001 0111 &lt;&lt; 1 &amp; 1010 1010 = 0010 1010
+0000 0001 | 0010 1010 = 0010 1011
 </code></pre>
 
-<h3 id="toc_7">内存策略淘汰</h3>
+<p>其实可以发现关键的点就是<em>mask</em>的生成，规律如下：</p>
 
-<p>待续，关键点：LRU算法</p>
+<pre><code>1. 0000 1111
+2. 0011 0011
+3. 0101 0101
+</code></pre>
 
-<h2 id="toc_8">总结</h2>
+<p>通过位运算来反转二进制数。</p>
 
-<p><em>Redis</em>淘汰逻辑核心点不多，主要只是将整个淘汰工作分布至各个操作中，提高了整体的效率，同时也使用了异步删除等机制。之后还能衍生出集群的键值淘汰逻辑等。</p>
+<h2 id="toc_2">问题二：遍历变长字典</h2>
 
-<h2 id="toc_9">参考链接</h2>
+<p>答案是：从高位遍历到低位。</p>
+
+<p>遍历的情况分为3种：未进行重哈希、扩大字典、缩小字典。对于未进行重哈希的情况就不进行描述。</p>
+
+<h3 id="toc_3">优点</h3>
+
+<ol>
+<li>提供键空间的遍历操作，支持游标，复杂度O(1), 整体遍历一遍只需要O(N)；</li>
+<li>提供结果模式匹配；</li>
+<li>支持一次返回的数据条数设置，但仅仅是个hints，有时候返回的会多；</li>
+<li>弱状态，所有状态只需要客户端需要维护一个游标；</li>
+</ol>
+
+<h3 id="toc_4">缺点</h3>
+
+<ol>
+<li>无法提供完整的快照遍历，也就是中间如果有数据修改，可能有些涉及改动的数据遍历不到；</li>
+<li>每次返回的数据条数不一定，极度依赖内部实现；</li>
+<li>返回的数据可能有重复，应用层必须能够处理重入逻辑；</li>
+</ol>
+
+<h2 id="toc_5">相关链接</h2>
 
 <ul>
-<li><a href="https://blog.csdn.net/kl1106/article/details/79566594">CSDN - Redis缓存淘汰</a></li>
-<li><a href="https://blog.csdn.net/lizhi_java/article/details/68953179">CSDN - 缓存淘汰策略</a></li>
+<li><a href="http://chenzhenianqing.com/articles/1090.html">Redis Scan迭代器遍历操作原理</a></li>
 </ul>
 
 
 		</div>
+	
+
+ 
 	
 
   
