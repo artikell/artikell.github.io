@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  Redis 对象Object - artikell
+  Mysql - artikell
   
   </title>
  <meta name="description" content="The royal family never give up">
@@ -179,169 +179,106 @@
             </div>
             <div class="large-9 medium-9 columns">
 
- <div class="markdown-body">
-<h1>Redis 对象Object</h1>
-
-<h2 id="toc_0">前言</h2>
-
-<p>在<em>Redis</em>中，对对象拥有一套管理的机制，包括引用、内存、以及淘汰机制，这套机制的的建立，便是Object结构体本身的设计，所以此次，我们通过相关的方面来了解<em>Object</em>对象。</p>
-
-<h2 id="toc_1">主要的类型</h2>
-
-<p>在对象系统中，共有6个类型：<code>string、list、set、zset、hash、stream</code>。</p>
-
-<p>相对应的基础的数据结构也有7类：<code>string、adlist、ziplist、quicklist、dict、skiplist、inset</code></p>
-
-<p>下面的表格将会列出各个类型对应的使用的数据结构：</p>
-
-<table>
-<thead>
-<tr>
-<th>Type_Encoding</th>
-<th>DataStruct</th>
-<th>Limit</th>
-</tr>
-</thead>
-
-<tbody>
-<tr>
-<td>String_int</td>
-<td>long long</td>
-<td>Element is int</td>
-</tr>
-<tr>
-<td>String_raw</td>
-<td>sbs</td>
-<td>Length &gt; 44</td>
-</tr>
-<tr>
-<td>String_embstr</td>
-<td>embstr</td>
-<td>Length &lt;= 44</td>
-</tr>
-<tr>
-<td>List_ziplist</td>
-<td>ziplist</td>
-<td>Default</td>
-</tr>
-<tr>
-<td>List_quicklist</td>
-<td>quicklist</td>
-<td>Size &gt; 64 or Count &gt; 512</td>
-</tr>
-<tr>
-<td>Set_ht</td>
-<td>dict</td>
-<td>Element isn’t int or Cout &gt; 512</td>
-</tr>
-<tr>
-<td>Set_intset</td>
-<td>intset</td>
-<td>Default</td>
-</tr>
-<tr>
-<td>Hash_ziplist</td>
-<td>ziplist</td>
-<td>Default</td>
-</tr>
-<tr>
-<td>Hash_ht</td>
-<td>dict</td>
-<td>Size &gt; 64 or Count &gt; 512</td>
-</tr>
-<tr>
-<td>Zset_skiplist</td>
-<td>dict、skiplist</td>
-<td>Size &gt; 64 or Count &gt; 128</td>
-</tr>
-<tr>
-<td>Zset_ziplist</td>
-<td>ziplist</td>
-<td>Default</td>
-</tr>
-</tbody>
-</table>
-
-<p>大部分情况的转换都是根据元素个数与元素大小超过限制进行判断。当然这些限制也是可配置项：</p>
-
-<pre><code>hash-max-ziplist-entries 512 
-hash-max-ziplist-value 64 
-list-max-ziplist-entries 512 
-list-max-ziplist-value 64 
-set-max-intset-entries 512 
-zset-max-ziplist-entries 128 
-zset-max-ziplist-value 64
-</code></pre>
-
-<h2 id="toc_2">Object的设计</h2>
-
-<p><em>Object</em>的设计拥有所有对象系统共有的特征：<em>relcount、ptr、type</em>。细节的结构体如下：</p>
-
-<pre><code>typedef struct redisObject {
-    unsigned type:4;
-    unsigned encoding:4;
-    unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
-                            * LFU data (least significant 8 bits frequency
-                            * and most significant 16 bits access time). */
-    int refcount;
-    void *ptr;
-} robj;
-</code></pre>
-
-<p>结构体不难理解，拥有类型、编码、超时权重、引用次数以及所指内存。<br/>
-其中<em>类型\编码</em>在上一节已经列举出来，相关的类型原理之后再进行描述。</p>
-
-<h2 id="toc_3">对象的销毁以及共享</h2>
-
-<p>在拥有对象引用属性时，系统就会考虑对象销毁的时机。对象系统提供了<em>decrRefCount</em>和<em>incrRefCount</em>2个方法，前者用于减少引用数，后者相反。</p>
-
-<p>所以，当<em>Redis</em>使用完对象时，会调用<em>decrRefCount</em>方法来减少引用数，当发现引用数为1时，说明当前对象需要被销毁，对象系统会主动调用相关类型的销毁函数进行内存清理。</p>
-
-<p>当然，<em>Redis</em>为了高效，提供了共享对象，其中包含<em>1~10000</em>中间的所有数字，创建时将其的引用数设置为无穷大，同时在减少引用数的时候，判断引用数是否为无穷大，是则不进行引用数减少，提高了内存利用率</p>
-
-<h2 id="toc_4">总结</h2>
-
-<p>关于Redis的对象系统，其实没有什么需要过多的介绍，对于对象来说，<em>Redis</em>本身对不同的类型进行了多态化的分解，导致主要的操作都分散在各个部分中，包括淘汰策略、以及内存分配等。</p>
+ 
 
 
-</div>
+	
+		<div class="markdown-body">
+		<h1>MYSQL技术内幕学习</h1>
 
-<br /><br />
-<hr />
+		<h2 id="toc_0">前言</h2>
 
-<div class="row clearfix">
-  <div class="large-6 columns">
-	<div class="text-left" style="padding:15px 0px;">
-		
-	        <a href="15286261757400.html"  title="Previous Post: Redis 跳跃表">&laquo; Redis 跳跃表</a>
-	    
-	</div>
-  </div>
-  <div class="large-6 columns">
-	<div class="text-right" style="padding:15px 0px;">
-		
-	        <a href="15285709665764.html" 
-	        title="Next Post: Redis 字典扫描算法">Redis 字典扫描算法 &raquo;</a>
-	    
-	</div>
-  </div>
-</div>
+<h2 id="toc_1">表空间结构</h2>
 
-<div class="row">
-<div style="padding:0px 0.93em;" class="share-comments">
+<p>首先，整个表空间分别由段、区、页组成。其中包含了数据、索引、插入缓冲bitmap页。<br/>
+而，其他例如undo、redo、插入缓冲索引也、事务信息等，都是在<em>共享表空间</em>中。</p>
 
-</div>
-</div>
-<script type="text/javascript">
-	$(function(){
-		var currentURL = '15286147511534.html';
-		$('#side-nav a').each(function(){
-			if($(this).attr('href') == currentURL){
-				$(this).parent().addClass('active');
-			}
-		});
-	});
-</script>  
+<blockquote>
+<p>共享表空间和表空间的结构差异？</p>
+</blockquote>
+
+<p>表空大致结构如下：<br/>
+<img src="media/15602214770128/15602215597762.jpg" alt=""/></p>
+
+<p>在表空间结构下面，是通过分段进行管理，段结构包含常用的数据段、索引段、回滚段。<br/>
+而不同段下面，则是通过分区来进行数据划分，每个区都是1MB，而页面大小都是16KB，所以每个区都拥有64个页。</p>
+
+<p>页的具体类型有：<br/>
+1. 数据页<br/>
+2. undo页<br/>
+3. 系统页<br/>
+4. 事务数据页<br/>
+5. 插入缓冲位图页<br/>
+6. 插入缓冲空闲列表页<br/>
+7. 未压缩二进制大对象页<br/>
+8. 压缩二进制大对象页</p>
+
+<p>每页则是通过行来进行组成。<br/>
+行的类型包含Compact和Redundant2种格式存放。<br/>
+<img src="media/15602214770128/15602252233925.jpg" alt="Compact格式"/></p>
+
+<p><img src="media/15602214770128/15602252363913.jpg" alt="Redundant格式"/></p>
+
+<p>2者差异在于，头部的数据，一个只给出变长字段长度列表，一个给出所有字段长度列表，这样前者节约了大量空间。而对于text和blob数据类型，为了保证每个页中至少存在2行数据，所以，当text的数据超过一点长度（768b）后，会尝试创建创建未压缩数据页。</p>
+
+<p>InnoDB Plugin引入了新的文件格式（file format，可以理解为新的页格式），对于以前支持的Compact和Redundant格式将其称为Antelope文件格式，新的文件格式称为Barracuda。Barracuda文件格式下拥有两种新的行记录格式Compressed和Dynamic两种。新的两种格式对于存放BLOB的数据采用了完全的行溢出的方式，在数据页中只存放20个字节的指针，实际的数据都存放在BLOB Page中，而之前的Compact和Redundant两种格式会存放768个前缀字节。</p>
+
+<p>数据页结构<br/>
+1. File Header - 文件头，记录页的头部信息，特征以及页面类型<br/>
+2. Page Header - 页头，该部分记录数据页的状态信息<br/>
+3. Infimun 和 Supremun Records，虚拟行，标记最大和最小边界<br/>
+4. User Records - 行记录，实际存储的地址<br/>
+5. Free space - 空闲空间<br/>
+6. Page Directory - 页目录<br/>
+7. File Trailer - 文件尾</p>
+
+<p>其中，文件头、页头、文件尾大小固定，分别为38、56、8字节。<br/>
+<img src="media/15602214770128/15602342959727.jpg" alt=""/></p>
+
+<p><img src="media/15602214770128/15602367126223.jpg" alt=""/></p>
+
+<h2 id="toc_2">Innodb的功能</h2>
+
+<p>innodb主要是将数据放在一个表空间中进行管理，通过mvcc来获得高并发，同时提供插入缓冲、二次写、自适应哈希索引、预读来支持高性能和高可用。</p>
+
+<p>innodb存储引擎主要支持请求处理：<br/>
+1. 维护所有线程的数据结构<br/>
+2. 缓存磁盘上的数据<br/>
+3. 重做日志的缓存<br/>
+... ...</p>
+
+<p><img src="media/15602214770128/15602371597989.jpg" alt=""/></p>
+
+<p>后台线程主要负责刷新内存池中的数据，保证数据是最新的。</p>
+
+<p>Master Thread，主要负责将缓冲池的数据异步刷新到磁盘，保证数据一致性，<br/>
+IO Thread，负责处理大量的IO操作<br/>
+Purge Thread，负责回收已经使用的undolog页面<br/>
+Page cleaner Thread，负责将脏页刷新至磁盘</p>
+
+<p>内存分布：<br/>
+缓冲池是一个大的内存块，其中包括：索引页、数据页、undo页等。<br/>
+而刷新页面算法则通过LRU List算法来更新，而为了保证更好的效率，则新的页面会先插入midpoint位置上。<br/>
+Free List和Flush List的功能和名字相同，一个是管理无用内存页列表，一个是管理脏页的列表。</p>
+
+<p><img src="media/15602214770128/15602435608389.jpg" alt=""/></p>
+
+<p>重做日志缓冲<br/>
+1. Master Thread每一秒会刷新一次重做日志<br/>
+2. 事务提交会刷新一次重做日志<br/>
+3. 缓冲池小于1/2时，刷新重做日志</p>
+
+<p>Innodb特征</p>
+
+
+		</div>
+	
+
+ 
+	
+
+  
+  
 </div></div>
 
 
