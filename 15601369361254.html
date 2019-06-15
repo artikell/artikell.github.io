@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  Redis 慢日志 - artikell
+  红黑树学习纪要 - artikell
   
   </title>
   
@@ -108,14 +108,12 @@
       <div class="markdown-body article-wrap">
        <div class="article">
           
-          <h1>Redis 慢日志</h1>
+          <h1>红黑树学习纪要</h1>
      
         <div class="read-more clearfix">
-          <span class="date">2018/7/1</span>
+          <span class="date">2019/6/10</span>
 
-          <span>posted in&nbsp;</span> 
           
-              <span class="posted-in"><a href='Redis.html'>Redis</a></span>
            
          
           <span class="comments">
@@ -130,125 +128,37 @@
       <div class="article-content">
       <h2 id="toc_0">前言</h2>
 
-<p>慢日志是一个比较简短的模块，先来看看</p>
+<p>快速了解并学习红黑树，整理相关资料信息。</p>
 
-<h2 id="toc_1">慢日志条件</h2>
+<h2 id="toc_1">具体实现</h2>
 
-<p>说的慢日志，我们可以先看看call调用函数的flags分类：</p>
+<h3 id="toc_2">红黑树的特性</h3>
 
-<pre><code>#define CMD_CALL_NONE 0
-#define CMD_CALL_SLOWLOG (1&lt;&lt;0)
-#define CMD_CALL_STATS (1&lt;&lt;1)
-#define CMD_CALL_PROPAGATE_AOF (1&lt;&lt;2)
-#define CMD_CALL_PROPAGATE_REPL (1&lt;&lt;3)
-#define CMD_CALL_PROPAGATE (CMD_CALL_PROPAGATE_AOF|CMD_CALL_PROPAGATE_REPL)
-#define CMD_CALL_FULL (CMD_CALL_SLOWLOG | CMD_CALL_STATS | CMD_CALL_PROPAGATE)
-</code></pre>
+<p>（1）每个节点或者是黑色，或者是红色。<br/>
+（2）根节点是黑色。<br/>
+（3）每个叶子节点（NIL）是黑色。 [注意：这里叶子节点，是指为空(NIL或NULL)的叶子节点！]<br/>
+（4）如果一个节点是红色的，则它的子节点必须是黑色的。<br/>
+（5）从一个节点到该节点的子孙节点的所有路径上包含相同数目的黑节点。</p>
 
-<p>包括四类：添加慢日志、进入命令统计、AOF传播和REPL传播<br/>
-正常命令都会包含所有<em>flags</em>，所以默认会进行慢日志统计。</p>
+<h3 id="toc_3">增删操作</h3>
 
-<pre><code>    if (flags &amp; CMD_CALL_SLOWLOG &amp;&amp; c-&gt;cmd-&gt;proc != execCommand) {  // 慢日志写入
-        char *latency_event = (c-&gt;cmd-&gt;flags &amp; CMD_FAST) ?
-                              &quot;fast-command&quot; : &quot;command&quot;;
-        latencyAddSampleIfNeeded(latency_event,duration/1000);
-        slowlogPushEntryIfNeeded(c,c-&gt;argv,c-&gt;argc,duration);
-    }
-</code></pre>
+<h4 id="toc_4">增加一个节点</h4>
 
-<p>慢日志入口的判断就比较简单，判断是否有标记以及命令是否为<em>execCommand</em>，事务处理不计入统计。</p>
+<p>插入节点三步走：</p>
 
-<h2 id="toc_2">慢日志源码剖析</h2>
+<p>第一步: 将红黑树当作一颗二叉查找树，将节点插入。<br/>
+第二步：将插入的节点着色为&quot;红色&quot;。<br/>
+第三步: 通过一系列的旋转或着色等操作，使之重新成为一颗红黑树。</p>
 
-<h3 id="toc_3">主要结构体</h3>
+<blockquote>
+<p>处理问题的核心思路都是：将红色的节点移到根节点；然后，将根节点设为黑色</p>
+</blockquote>
 
-<p><em>slowlogEntry</em>是慢日志的唯一结构体</p>
+<p>情况则会有四种：<br/>
+1. 自己是红的、父亲是红的<br/>
+2. 自己是红的、父亲是黑的</p>
 
-<pre><code>typedef struct slowlogEntry {
-    robj **argv;        /* 参数列表 */   
-    int argc;           /* 参数个数 */   
-    long long id;       /* 唯一编号 */
-    long long duration; /* 处理时长，毫秒 */
-    time_t time;        /* 执行时间 */
-    sds cname;          /* 客户端名称 */
-    sds peerid;         /* 客户端地址 */
-} slowlogEntry;
-</code></pre>
-
-<h3 id="toc_4">主要函数</h3>
-
-<p><em>slowlogPushEntryIfNeeded</em> 函数是整个慢日志的触发入口：</p>
-
-<pre><code>void slowlogPushEntryIfNeeded(client *c, robj **argv, int argc, long long duration) {
-    if (server.slowlog_log_slower_than &lt; 0) return; /* 未开启慢日志记录 */
-    if (duration &gt;= server.slowlog_log_slower_than) /* 耗时足够 */
-        /* 将慢日志插入列表中 */
-        listAddNodeHead(server.slowlog,
-                        slowlogCreateEntry(c,argv,argc,duration));
-
-        
-    while (listLength(server.slowlog) &gt; server.slowlog_max_len)
-        listDelNode(server.slowlog,listLast(server.slowlog));
-}
-</code></pre>
-
-<p><em>slowlogCreateEntry</em>函数，则是创建一个慢日志元素的方法：</p>
-
-<pre><code>slowlogEntry *slowlogCreateEntry(client *c, robj **argv, int argc, long long duration) {
-    slowlogEntry *se = zmalloc(sizeof(*se));
-    int j, slargc = argc;
-
-    /* 参数不允许超过32个，否则就截取前32个 */
-    if (slargc &gt; SLOWLOG_ENTRY_MAX_ARGC) slargc = SLOWLOG_ENTRY_MAX_ARGC;
-    se-&gt;argc = slargc;
-    se-&gt;argv = zmalloc(sizeof(robj*)*slargc);
-    for (j = 0; j &lt; slargc; j++) {
-        /* 如果是最后一个元素时，则添加一个省略号来标记 */
-        if (slargc != argc &amp;&amp; j == slargc-1) {
-            se-&gt;argv[j] = createObject(OBJ_STRING,
-                sdscatprintf(sdsempty(),&quot;... (%d more arguments)&quot;,
-                argc-slargc+1));
-        } else {
-            /* 处理长度大于128的参数信息 */
-            if (argv[j]-&gt;type == OBJ_STRING &amp;&amp;
-                sdsEncodedObject(argv[j]) &amp;&amp;
-                sdslen(argv[j]-&gt;ptr) &gt; SLOWLOG_ENTRY_MAX_STRING)
-            {
-                sds s = sdsnewlen(argv[j]-&gt;ptr, SLOWLOG_ENTRY_MAX_STRING);
-
-                s = sdscatprintf(s,&quot;... (%lu more bytes)&quot;,
-                    (unsigned long)
-                    sdslen(argv[j]-&gt;ptr) - SLOWLOG_ENTRY_MAX_STRING);
-                se-&gt;argv[j] = createObject(OBJ_STRING,s);
-            } else if (argv[j]-&gt;refcount == OBJ_SHARED_REFCOUNT) {
-                /* 如果是共享的变量，则直接复制 */
-                se-&gt;argv[j] = argv[j];
-            } else {
-                /* 重新开辟内存 */
-                se-&gt;argv[j] = dupStringObject(argv[j]);
-            }
-        }
-    }
-    se-&gt;time = time(NULL);
-    se-&gt;duration = duration;
-    se-&gt;id = server.slowlog_entry_id++;     /* 自增编号 */
-    se-&gt;peerid = sdsnew(getClientPeerId(c));
-    se-&gt;cname = c-&gt;name ? sdsnew(c-&gt;name-&gt;ptr) : sdsempty();
-    return se;
-}
-</code></pre>
-
-<p><em>slowlogReset</em>函数是用于重置慢日志的函数，方法就行遍历并删除节点</p>
-
-<pre><code>void slowlogReset(void) {
-    while (listLength(server.slowlog) &gt; 0)
-        listDelNode(server.slowlog,listLast(server.slowlog));
-}
-</code></pre>
-
-<h3 id="toc_5">结语</h3>
-
-<p>看看比较简单的慢日志模块而已。</p>
+<p>待定，2019年06月11日</p>
 
 
     
@@ -259,16 +169,16 @@
         <div class="large-6 columns">
         <p class="text-left" style="padding:15px 0px;">
       
-          <a href="15304380579995.html" 
-          title="Previous Post: Redis 耗时记录模块">&laquo; Redis 耗时记录模块</a>
+          <a href="15602214770128.html" 
+          title="Previous Post: MYSQL技术内幕学习">&laquo; MYSQL技术内幕学习</a>
       
         </p>
         </div>
         <div class="large-6 columns">
       <p class="text-right" style="padding:15px 0px;">
       
-          <a  href="15298493212536.html" 
-          title="Next Post: Redis启动过程分析">Redis启动过程分析 &raquo;</a>
+          <a  href="15526053026851.html" 
+          title="Next Post: 优化专栏">优化专栏 &raquo;</a>
       
       </p>
         </div>
