@@ -4,13 +4,14 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2019-06-15T09:16:32+08:00</updated>
+  <updated>2019-06-15T09:18:11+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
     
   </author>
-  <generator uri="http://www.mweb.im/">MWeb</generator>
+  <generator uri="http://www.mweb.im">MWeb</generator>
+
   
   <entry>
     <title type="html"><![CDATA[MYSQL技术内幕学习]]></title>
