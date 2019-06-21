@@ -47,6 +47,12 @@
         <li><label>Optimize</label></li>
 
           
+            <li><a title="PHP错误等级" href="15610970687582.html">PHP错误等级</a></li>
+          
+            <li><a title="服务发现架构" href="15606052161429.html">服务发现架构</a></li>
+          
+            <li><a title="分布式事务" href="15605931624272.html">分布式事务</a></li>
+          
             <li><a title="缓存总结" href="15605709598391.html">缓存总结</a></li>
           
             <li><a title="TCP vs UDP 总结" href="15605624219274.html">TCP vs UDP 总结</a></li>
@@ -136,6 +142,12 @@
                     
                       <li class="side-title"><span>Optimize</span></li>
                         
+                          <li><a title="PHP错误等级" href="15610970687582.html">PHP错误等级</a></li>
+                        
+                          <li><a title="服务发现架构" href="15606052161429.html">服务发现架构</a></li>
+                        
+                          <li><a title="分布式事务" href="15605931624272.html">分布式事务</a></li>
+                        
                           <li><a title="缓存总结" href="15605709598391.html">缓存总结</a></li>
                         
                           <li><a title="TCP vs UDP 总结" href="15605624219274.html">TCP vs UDP 总结</a></li>
@@ -210,138 +222,179 @@
 
 	
 		<div class="markdown-body">
-		<h1>缓存总结</h1>
+		<h1>PHP错误等级</h1>
 
 		<h2 id="toc_0">前言</h2>
 
-<p>缓存系统是架构设计中一个高并发支持的关键。主要是要解决缓存和源数据的一致性，以及缓存自身的高可用，以此来避免并发量打击到源数据，使得源数据受损</p>
+<p>有人问，在PHP中，函数名重复和函数不存在，分别会报什么错误？而我，一头雾水，于是，来整理整理。</p>
 
-<h2 id="toc_1">缓存介绍</h2>
+<h2 id="toc_1">PHP的错误</h2>
 
-<h3 id="toc_2">什么是缓存？</h3>
+<h3 id="toc_2">错误分类</h3>
 
-<p>缓存就是数据交换的缓冲区（称作：Cache），当某一硬件要读取数据时，会首先从缓存汇总查询数据，有则直接执行，不存在时从内存中获取。由于缓存的数据比内存快的多，所以缓存的作用就是帮助硬件更快的运行。</p>
+<p>首先，至少能知道，php中有个可以控制报错信息的函数：<code>error_reporting</code>，而该函数的参数，则是各个错误与等级：</p>
 
-<h3 id="toc_3">缓存的分类</h3>
+<pre><code>1    E_ERROR        报告运行时的致命错误
+2    E_WARNING      报告运行的非致命错误
 
-<p>缓存在系统的各个阶段都存在：<br/>
-* 操作系统磁盘缓存 ——&gt; 减少磁盘机械操作。<br/>
-* 数据库缓存——&gt;减少文件系统IO。<br/>
-* 应用程序缓存——&gt;减少对数据库的查询。<br/>
-* Web服务器缓存——&gt;减少应用服务器请求。<br/>
-* 客户端浏览器缓存——&gt;减少对网站的访问。</p>
+4    E_PARSE        报告解析错误
+8    E_NOTICE       报告通告，注意，表示所做的事情可能是错误的.
+16   E_CORE_ERROR   报告PHP引擎启动失败
+32   E_CORE_WARNING 报告PHP引擎启动时非致命错误
 
-<h3 id="toc_4">缓存的问题</h3>
+64   E_COMPILE_ERROR    报告编译错误
+128  E_COMPILE_WARNING  报告编译时出现的非致命错误
 
-<p>在具体了解缓存问题之前先来明确几个术语：</p>
+256  E_USER_ERROR      报告用户触发的错误
+512  E_USER_WARNING    报告用户触发的警告
+1024 E_USER_NOTICE     报告用户触发的通告
 
-<p><strong>缓存命中率</strong>：从缓存中得到数据的请求数与所有请求数的比率。理想状态是越高越好。<br/>
-<strong>过期内容</strong>：超过设置的有效时间，被标记为“陈旧”的内容。通常过期内容不能用于回复客户端的请求，必须重新向源服务器请求新的内容或者验证缓存的内容是否仍然准备。<br/>
-<strong>验证</strong>：验证缓存中的过期内容是否仍然有效，验证通过的话刷新过期时间。<br/>
-<strong>失效</strong>：失效就是把内容从缓存中移除。当内容发生改变时就必须移除失效的内容。</p>
+2048 E_STRICT         报告不赞成的用法和不推荐的行为
+8192 E_DEPRECATED     运行时通知。启用后将会对在未来版本中可能无法正常工作的代码给出警告。
+30719 E_ALL           报告所有的错误和警告
+</code></pre>
 
-<p>缓存的使用不可避免的会带来更新的问题，如何更新是一个难题。而缓存更新又会带来几个问题：、</p>
+<p>当然，你可以通过修改php.ini文件来设置默认错误等级：<br/>
+<code><br/>
+error_reporting = E_ALL &amp; ~(E_NOTICE) &amp; ~(E_WARNING)<br/>
+</code></p>
 
-<ol>
-<li>大量查询不存在的缓存，导致缓存穿透</li>
-<li>大量缓存更新，导致大部分不命中缓存，导致更新雪崩</li>
-<li>大量请求命中单一缓存，缓存更新时，导致命中失败，则发生缓存击穿</li>
-<li>同时，是先更新缓存，还是先更新数据，也是一个问题，前者可能出现数据异常，后者可能出现数据延时</li>
-</ol>
+<p>在php.ini文件中，和错误有关的设置有如下几个:<br/>
+1. error_reporting，设定错误级别<br/>
+2. display_errors，是否显示错误报告，设置为ON则打开,设置为OFF则关闭所有错误提示<br/>
+3. log_errors，默认设置为OFF,是否记录错误日志;<br/>
+4. track_errors，默认设置为OFF,该选项可以帮助解决代码中的错误,而不是让PHP提供其默认的功能。</p>
 
-<p>之后我们就一一来讨论以上问题。</p>
+<h3 id="toc_3">错误级别</h3>
 
-<h3 id="toc_5">缓存更新方式</h3>
+<p>为了那快速定位类型，于是就有下面的前置脚本：</p>
 
-<p>更新时序的方法有3种：<br/>
-1. Cache Aside 更新模式实现起来比较简单，但是需要维护两个数据存储，一个是缓存（Cache），一个是数据库（Repository）。<br/>
-2. Read/Write Through 更新模式只需要维护一个数据存储（缓存），但是实现起来要复杂一些。<br/>
-3. Write Behind Caching 更新模式和Read/Write Through 更新模式类似，区别是Write Behind Caching 更新模式的数据持久化操作是异步的，但是Read/Write Through 更新模式的数据持久化操作是同步的。</p>
+<pre><code>&lt;?php
+error_reporting(E_ALL);
+function errorHandler($errno, $errstr, $errfile, $errline)
+{
+    switch($errno)
+    {
+        case E_ERROR: // 1 //
+            echo &#39;E_ERROR&#39;.PHP_EOL;
+        case E_WARNING: // 2 //
+            echo &#39;E_WARNING&#39;.PHP_EOL;
+        case E_PARSE: // 4 //
+            echo &#39;E_PARSE&#39;.PHP_EOL;
+        case E_NOTICE: // 8 //
+            echo &#39;E_NOTICE&#39;.PHP_EOL;
+        case E_CORE_ERROR: // 16 //
+            echo &#39;E_CORE_ERROR&#39;.PHP_EOL;
+        case E_CORE_WARNING: // 32 //
+            echo &#39;E_CORE_WARNING&#39;.PHP_EOL;
+        case E_COMPILE_ERROR: // 64 //
+            echo &#39;E_COMPILE_ERROR&#39;.PHP_EOL;
+        case E_COMPILE_WARNING: // 128 //
+            echo &#39;E_COMPILE_WARNING&#39;.PHP_EOL;
+        case E_USER_ERROR: // 256 //
+            echo &#39;E_USER_ERROR&#39;.PHP_EOL;
+        case E_USER_WARNING: // 512 //
+            echo &#39;E_USER_WARNING&#39;.PHP_EOL;
+        case E_USER_NOTICE: // 1024 //
+            echo &#39;E_USER_NOTICE&#39;.PHP_EOL;
+        case E_STRICT: // 2048 //
+            echo &#39;E_STRICT&#39;.PHP_EOL;
+        case E_RECOVERABLE_ERROR: // 4096 //
+            echo &#39;E_RECOVERABLE_ERROR&#39;.PHP_EOL;
+        case E_DEPRECATED: // 8192 //
+            echo &#39;E_DEPRECATED&#39;.PHP_EOL;
+        case E_USER_DEPRECATED: // 16384 //
+            echo &#39;E_USER_DEPRECATED&#39;.PHP_EOL;
+    }
+}
 
-<p>以下我们主要介绍第一种Cache Aside。</p>
+$error_handler = set_error_handler(&quot;errorHandler&quot;);
+</code></pre>
 
-<h4 id="toc_6">更新缓存 VS 淘汰缓存</h4>
+<p>这样，我们就开始定位相关错误会出现的情况。</p>
 
-<p>什么是更新缓存：数据不但写入数据库，还会写入缓存<br/>
-什么是淘汰缓存：数据只会写入数据库，不会写入缓存，只会把数据淘汰掉</p>
+<h4 id="toc_4">E_DEPRECATED &amp;&amp; E_USER_DEPRECATED</h4>
 
-<p>更新缓存的优点：缓存不会增加一次miss，命中率高<br/>
-淘汰缓存的优点：简单</p>
+<pre><code>&lt;?php
+include &#39;err.php&#39;;
+class A {
+    public function b() {
+    }
+}
+$a = new A();
+$a::b();
+</code></pre>
 
-<p>那到底是选择更新缓存还是淘汰缓存呢，主要取决于“更新缓存的复杂度”。</p>
+<p>这个问题主要是因为通过静态方法的方式访问了非静态方法，官方介绍为：<em>启用后将会对在未来版本中可能无法正常工作的代码给出警告</em></p>
 
-<blockquote>
-<p>更新缓存的代价很小，此时我们应该更倾向于更新缓存，以保证更高的缓存命中率</p>
-</blockquote>
+<h4 id="toc_5">函数重复</h4>
 
-<h4 id="toc_7">先操作数据库 vs 先操作缓存</h4>
+<pre><code>&lt;?php
+include &#39;err.php&#39;;
+class A {
+    public function a(){
+    }
+    public function a(){
+    }
+}
+$a = new A();
+$a-&gt;a();
+</code></pre>
 
-<p>当写操作发生时，假设淘汰缓存作为对缓存通用的处理方式，又面临两种抉择：</p>
+<p>该问题则直接报：<code>PHP Fatal error:  Cannot redeclare A::a()</code>，说明这个直接解析失败，并走不到报错的逻辑。</p>
 
-<p>（1）先写数据库，再淘汰缓存<br/>
-（2）先淘汰缓存，再写数据库</p>
+<h4 id="toc_6">访问不存在的方法</h4>
 
-<p>究竟采用哪种时序呢？<br/>
-对于一个不能保证事务性的操作，一定涉及“哪个任务先做，哪个任务后做”的问题，解决这个问题的方向是：<br/>
-如果出现不一致，谁先做对业务的影响较小，就谁先执行。<br/>
-由于写数据库与淘汰缓存不能保证原子性，谁先谁后同样要遵循上述原则。</p>
+<pre><code>&lt;?php
+include &#39;err.php&#39;;
+class A {
+}
+$a = new A();
+$a-&gt;a();
+</code></pre>
 
-<p>假设先写数据库，再淘汰缓存：第一步写数据库操作成功，第二步淘汰缓存失败，则会出现DB中是新数据，Cache中是旧数据，数据不一致。<br/>
-假设先淘汰缓存，再写数据库：第一步淘汰缓存成功，第二步写数据库失败，则只会引发一次Cache miss。</p>
+<p>这个问题，也是报<code>PHP Fatal error:  Uncaught Error: Call to undefined method</code>，但是，这个会走到解析，主要原因也是因为<code>__call</code>方法的存在可能导致错误可以避免。</p>
 
-<blockquote>
-<p>结论：数据和缓存的操作时序，结论是清楚的：先淘汰缓存，再写数据库。</p>
-</blockquote>
+<h4 id="toc_7">除0操作</h4>
 
-<h4 id="toc_8">结论强调</h4>
+<pre><code>&lt;?php
+include &#39;err.php&#39;;
+echo 1/0;
+</code></pre>
 
-<p>（1）淘汰缓存是一种通用的缓存处理方式<br/>
-（2）先淘汰缓存，再写数据库的时序是毋庸置疑的<br/>
-（3）服务化是向业务方屏蔽底层数据库与缓存复杂性的一种通用方式</p>
+<p>这个就不列举了，报了一堆错误：<br/>
+<code><br/>
+E_WARNING<br/>
+E_PARSE<br/>
+E_NOTICE<br/>
+E_CORE_ERROR<br/>
+E_CORE_WARNING<br/>
+E_COMPILE_ERROR<br/>
+E_COMPILE_WARNING<br/>
+E_USER_ERROR<br/>
+E_USER_WARNING<br/>
+E_USER_NOTICE<br/>
+E_STRICT<br/>
+E_RECOVERABLE_ERROR<br/>
+E_DEPRECATED<br/>
+E_USER_DEPRECATED<br/>
+</code></p>
 
-<h3 id="toc_9">缓存异常问题</h3>
+<h2 id="toc_8">后续</h2>
 
-<h4 id="toc_10">缓存穿透</h4>
-
-<p>缓存穿透是指查询一个一定不存在的数据，因为缓存中也无该数据的信息，则会直接去数据库层进行查询，从系统层面来看像是穿透了缓存层直接达到db，从而称为缓存穿透</p>
-
-<h5 id="toc_11">解决方案</h5>
-
-<p><strong>bloom filter</strong>：类似于哈希表的一种算法，用所有可能的查询条件生成一个bitmap，在进行数据库查询之前会使用这个bitmap进行过滤，如果不在其中则直接过滤，从而减轻数据库层面的压力。</p>
-
-<p><strong>空值缓存</strong>：一种比较简单的解决办法，在第一次查询完不存在的数据后，将该key与对应的空值也放入缓存中，只不过设定为较短的失效时间，例如几分钟，这样则可以应对短时间的大量的该key攻击，设置为较短的失效时间是因为该值可能业务无关，存在意义不大，且该次的查询也未必是攻击者发起，无过久存储的必要，故可以早点失效。</p>
-
-<h4 id="toc_12">缓存雪崩</h4>
-
-<p>在普通的缓存系统中一般例如redis、memcache等中，我们会给缓存设置一个失效时间，但是如果所有的缓存的失效时间相同，那么在同一时间失效时，所有系统的请求都会发送到数据库层，db可能无法承受如此大的压力导致系统崩溃。</p>
-
-<h5 id="toc_13">解决方案</h5>
-
-<p><strong>线程互斥</strong>：只让一个线程构建缓存，其他线程等待构建缓存的线程执行完，重新从缓存获取数据才可以，每个时刻只有一个线程在执行请求，减轻了db的压力，但缺点也很明显，降低了系统的qps。</p>
-
-<p><strong>交错失效时间</strong>：这种方法时间比较简单粗暴，既然在同一时间失效会造成请求过多雪崩，那我们错开不同的失效时间即可从一定长度上避免这种问题，在缓存进行失效时间设置的时候，从某个适当的值域中随机一个时间作为失效时间即可。</p>
-
-<h4 id="toc_14">缓存击穿</h4>
-
-<p>缓存击穿实际上是缓存雪崩的一个特例，大家使用过微博的应该都知道，微博有一个热门话题的功能，用户对于热门话题的搜索量往往在一些时刻会大大的高于其他话题，这种我们成为系统的“热点“，由于系统中对这些热点的数据缓存也存在失效时间，在热点的缓存到达失效时间时，此时可能依然会有大量的请求到达系统，没有了缓存层的保护，这些请求同样的会到达db从而可能引起故障。击穿与雪崩的区别即在于击穿是对于特定的热点数据来说，而雪崩是全部数据。</p>
-
-<h5 id="toc_15">解决方案</h5>
-
-<p><strong>二级缓存</strong>：对于热点数据进行二级缓存，并对于不同级别的缓存设定不同的失效时间，则请求不会直接击穿缓存层到达数据库。</p>
-
-<p><strong>LRU算法</strong>： 算法根据数据的历史访问记录来进行淘汰数据，其核心思想是“如果数据最近被访问过，那么将来被访问的几率也更高”。最常见的实现是使用一个链表保存缓存数据。</p>
-
-<h2 id="toc_16">相关链接</h2>
-
-<ul>
-<li><a href="https://www.cnblogs.com/duanxz/p/3740595.html">https://www.cnblogs.com/duanxz/p/3740595.html</a></li>
-<li><a href="https://blog.csdn.net/chengxuyuan_110/article/details/81060865">https://blog.csdn.net/chengxuyuan_110/article/details/81060865</a></li>
-<li><a href="https://blog.csdn.net/arenn/article/details/81490649">https://blog.csdn.net/arenn/article/details/81490649</a></li>
-<li><a href="http://mp.weixin.qq.com/s?__biz=MjM5ODYxMDA5OQ==&amp;mid=2651961341&amp;idx=1&amp;sn=e27916b8e96bd771c72c055f1f53e5be&amp;chksm=bd2d02218a5a8b37ecffd78d20b65501645ac07c7ba2eb65b7e501a3eb9de023febe63bfdb36&amp;scene=21#wechat_redirect">http://mp.weixin.qq.com/s?__biz=MjM5ODYxMDA5OQ==&amp;mid=2651961341&amp;idx=1&amp;sn=e27916b8e96bd771c72c055f1f53e5be&amp;chksm=bd2d02218a5a8b37ecffd78d20b65501645ac07c7ba2eb65b7e501a3eb9de023febe63bfdb36&amp;scene=21#wechat_redirect</a></li>
-</ul>
+<p>暂时并没有后续，可能后续进行php源码级别的解析吧</p>
 
 
 		</div>
+	
+
+ 
+	
+
+ 
+	
+
+ 
 	
 
  

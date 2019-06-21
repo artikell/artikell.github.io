@@ -4,7 +4,7 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2019-06-15T21:41:58+08:00</updated>
+  <updated>2019-06-21T15:38:44+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -12,6 +12,175 @@
   </author>
   <generator uri="http://www.mweb.im">MWeb</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[PHP错误等级]]></title>
+    <link href="https://artikell.github.io/15610970687582.html"/>
+    <updated>2019-06-21T14:04:28+08:00</updated>
+    <id>https://artikell.github.io/15610970687582.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">前言</h2>
+
+<p>有人问，在PHP中，函数名重复和函数不存在，分别会报什么错误？而我，一头雾水，于是，来整理整理。</p>
+
+<h2 id="toc_1">PHP的错误</h2>
+
+<h3 id="toc_2">错误分类</h3>
+
+<p>首先，至少能知道，php中有个可以控制报错信息的函数：<code>error_reporting</code>，而该函数的参数，则是各个错误与等级：</p>
+
+<pre><code>1    E_ERROR        报告运行时的致命错误
+2    E_WARNING      报告运行的非致命错误
+
+4    E_PARSE        报告解析错误
+8    E_NOTICE       报告通告，注意，表示所做的事情可能是错误的.
+16   E_CORE_ERROR   报告PHP引擎启动失败
+32   E_CORE_WARNING 报告PHP引擎启动时非致命错误
+
+64   E_COMPILE_ERROR    报告编译错误
+128  E_COMPILE_WARNING  报告编译时出现的非致命错误
+
+256  E_USER_ERROR      报告用户触发的错误
+512  E_USER_WARNING    报告用户触发的警告
+1024 E_USER_NOTICE     报告用户触发的通告
+
+2048 E_STRICT         报告不赞成的用法和不推荐的行为
+8192 E_DEPRECATED     运行时通知。启用后将会对在未来版本中可能无法正常工作的代码给出警告。
+30719 E_ALL           报告所有的错误和警告
+</code></pre>
+
+<p>当然，你可以通过修改php.ini文件来设置默认错误等级：<br/>
+<code><br/>
+error_reporting = E_ALL &amp; ~(E_NOTICE) &amp; ~(E_WARNING)<br/>
+</code></p>
+
+<p>在php.ini文件中，和错误有关的设置有如下几个:<br/>
+1. error_reporting，设定错误级别<br/>
+2. display_errors，是否显示错误报告，设置为ON则打开,设置为OFF则关闭所有错误提示<br/>
+3. log_errors，默认设置为OFF,是否记录错误日志;<br/>
+4. track_errors，默认设置为OFF,该选项可以帮助解决代码中的错误,而不是让PHP提供其默认的功能。</p>
+
+<h3 id="toc_3">错误级别</h3>
+
+<p>为了那快速定位类型，于是就有下面的前置脚本：</p>
+
+<pre><code>&lt;?php
+error_reporting(E_ALL);
+function errorHandler($errno, $errstr, $errfile, $errline)
+{
+    switch($errno)
+    {
+        case E_ERROR: // 1 //
+            echo &#39;E_ERROR&#39;.PHP_EOL;
+        case E_WARNING: // 2 //
+            echo &#39;E_WARNING&#39;.PHP_EOL;
+        case E_PARSE: // 4 //
+            echo &#39;E_PARSE&#39;.PHP_EOL;
+        case E_NOTICE: // 8 //
+            echo &#39;E_NOTICE&#39;.PHP_EOL;
+        case E_CORE_ERROR: // 16 //
+            echo &#39;E_CORE_ERROR&#39;.PHP_EOL;
+        case E_CORE_WARNING: // 32 //
+            echo &#39;E_CORE_WARNING&#39;.PHP_EOL;
+        case E_COMPILE_ERROR: // 64 //
+            echo &#39;E_COMPILE_ERROR&#39;.PHP_EOL;
+        case E_COMPILE_WARNING: // 128 //
+            echo &#39;E_COMPILE_WARNING&#39;.PHP_EOL;
+        case E_USER_ERROR: // 256 //
+            echo &#39;E_USER_ERROR&#39;.PHP_EOL;
+        case E_USER_WARNING: // 512 //
+            echo &#39;E_USER_WARNING&#39;.PHP_EOL;
+        case E_USER_NOTICE: // 1024 //
+            echo &#39;E_USER_NOTICE&#39;.PHP_EOL;
+        case E_STRICT: // 2048 //
+            echo &#39;E_STRICT&#39;.PHP_EOL;
+        case E_RECOVERABLE_ERROR: // 4096 //
+            echo &#39;E_RECOVERABLE_ERROR&#39;.PHP_EOL;
+        case E_DEPRECATED: // 8192 //
+            echo &#39;E_DEPRECATED&#39;.PHP_EOL;
+        case E_USER_DEPRECATED: // 16384 //
+            echo &#39;E_USER_DEPRECATED&#39;.PHP_EOL;
+    }
+}
+
+$error_handler = set_error_handler(&quot;errorHandler&quot;);
+</code></pre>
+
+<p>这样，我们就开始定位相关错误会出现的情况。</p>
+
+<h4 id="toc_4">E_DEPRECATED &amp;&amp; E_USER_DEPRECATED</h4>
+
+<pre><code>&lt;?php
+include &#39;err.php&#39;;
+class A {
+    public function b() {
+    }
+}
+$a = new A();
+$a::b();
+</code></pre>
+
+<p>这个问题主要是因为通过静态方法的方式访问了非静态方法，官方介绍为：<em>启用后将会对在未来版本中可能无法正常工作的代码给出警告</em></p>
+
+<h4 id="toc_5">函数重复</h4>
+
+<pre><code>&lt;?php
+include &#39;err.php&#39;;
+class A {
+    public function a(){
+    }
+    public function a(){
+    }
+}
+$a = new A();
+$a-&gt;a();
+</code></pre>
+
+<p>该问题则直接报：<code>PHP Fatal error:  Cannot redeclare A::a()</code>，说明这个直接解析失败，并走不到报错的逻辑。</p>
+
+<h4 id="toc_6">访问不存在的方法</h4>
+
+<pre><code>&lt;?php
+include &#39;err.php&#39;;
+class A {
+}
+$a = new A();
+$a-&gt;a();
+</code></pre>
+
+<p>这个问题，也是报<code>PHP Fatal error:  Uncaught Error: Call to undefined method</code>，但是，这个会走到解析，主要原因也是因为<code>__call</code>方法的存在可能导致错误可以避免。</p>
+
+<h4 id="toc_7">除0操作</h4>
+
+<pre><code>&lt;?php
+include &#39;err.php&#39;;
+echo 1/0;
+</code></pre>
+
+<p>这个就不列举了，报了一堆错误：<br/>
+<code><br/>
+E_WARNING<br/>
+E_PARSE<br/>
+E_NOTICE<br/>
+E_CORE_ERROR<br/>
+E_CORE_WARNING<br/>
+E_COMPILE_ERROR<br/>
+E_COMPILE_WARNING<br/>
+E_USER_ERROR<br/>
+E_USER_WARNING<br/>
+E_USER_NOTICE<br/>
+E_STRICT<br/>
+E_RECOVERABLE_ERROR<br/>
+E_DEPRECATED<br/>
+E_USER_DEPRECATED<br/>
+</code></p>
+
+<h2 id="toc_8">后续</h2>
+
+<p>暂时并没有后续，可能后续进行php源码级别的解析吧</p>
+
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[服务发现架构]]></title>
@@ -49,9 +218,27 @@
 
 <h2 id="toc_4">服务发现</h2>
 
+<h3 id="toc_5">服务发现模式</h3>
+
 <p>现存根据配置的获取方式，有两种主要的服务发现机制：<em>客户端发现机制</em>和<em>服务端发现机制</em>。</p>
 
-<h3 id="toc_5">客户端发现模式</h3>
+<h4 id="toc_6">客户端发现模式</h4>
+
+<p>在客户端模式下，如果要进行微服务调用，首先要进行的是到服务注册中心获取服务列表，然后再根据调用端本地的负载均衡策略，进行服务调用。</p>
+
+<p><strong>特点：</strong><br/>
+1. 只需要周期性获取列表，在调用服务时可以直接调用少了一个RT。但需要在每个客户端维护获取列表的逻辑<br/>
+2. 可用性高，即使注册中心出现故障也能正常工作<br/>
+3. 服务上下线对调用方有影响（会出现短暂调用失败）</p>
+
+<h4 id="toc_7">服务端发现模式</h4>
+
+<p>在服务端模式下，调用方直接向服务注册中心进行请求，服务注册中心再通过自身负载均衡策略，对微服务进行调用。这个模式下，调用方不需要在自身节点维护服务发现逻辑以及服务注册信息，这个模式相对来说比较类似DNS模式。</p>
+
+<p><strong>特点：</strong><br/>
+1. 简单，不需要在客户端维护获取服务列表的逻辑<br/>
+2. 可用性由路由器中间件决定，路由中间件故障则所有服务不可用，同时，由于所有调度以及存储都由中间件服务器完成，中间件服务器可能会面临过高的负载<br/>
+3. 服务上下线调用方无感知</p>
 
 ]]></content>
   </entry>
@@ -1634,108 +1821,6 @@ struct latencyTimeSeries {
 <h2 id="toc_6">总结</h2>
 
 <p>怎么说呢，最近看数据结构，总感觉redis源码本身并不够优雅，没有nginx那种漂亮的结构以及更底层细致的操作。之后还会再继续学习。</p>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[Redis 哈希表hash源码解析]]></title>
-    <link href="https://artikell.github.io/15287362006822.html"/>
-    <updated>2018-06-12T00:56:40+08:00</updated>
-    <id>https://artikell.github.io/15287362006822.html</id>
-    <content type="html"><![CDATA[
-<h2 id="toc_0">前言</h2>
-
-<h2 id="toc_1">相关命令</h2>
-
-<table>
-<thead>
-<tr>
-<th>命令</th>
-<th>类型</th>
-<th>描述</th>
-</tr>
-</thead>
-
-<tbody>
-<tr>
-<td>HDEL</td>
-<td>删除</td>
-<td>删除一个或多个哈希表字段</td>
-</tr>
-<tr>
-<td>HEXISTS</td>
-<td>查询</td>
-<td>查看哈希表 key 中，指定的字段是否存在。</td>
-</tr>
-<tr>
-<td>HGET</td>
-<td>查询</td>
-<td>获取存储在哈希表中指定字段的值。</td>
-</tr>
-<tr>
-<td>HGETALL</td>
-<td>查询</td>
-<td>获取在哈希表中指定 key 的所有字段和值</td>
-</tr>
-<tr>
-<td>HINCRBY</td>
-<td>更新</td>
-<td>为哈希表 key 中的指定字段的整数值加上增量 increment 。</td>
-</tr>
-<tr>
-<td>HINCRBYFLOAT</td>
-<td>更新</td>
-<td>为哈希表 key 中的指定字段的浮点数值加上增量 increment 。</td>
-</tr>
-<tr>
-<td>HKEYS</td>
-<td>查询</td>
-<td>获取所有哈希表中的字段</td>
-</tr>
-<tr>
-<td>HLEN</td>
-<td>查询</td>
-<td>获取哈希表中字段的数量</td>
-</tr>
-<tr>
-<td>HMGET</td>
-<td>查询</td>
-<td>获取所有给定字段的值</td>
-</tr>
-<tr>
-<td>HMSET</td>
-<td>更新</td>
-<td>同时将多个 field-value (域-值)对设置到哈希表 key 中。</td>
-</tr>
-<tr>
-<td>HSET</td>
-<td>更新</td>
-<td>将哈希表 key 中的字段 field 的值设为 value 。</td>
-</tr>
-<tr>
-<td>HSETNX</td>
-<td>更新</td>
-<td>只有在字段 field 不存在时，设置哈希表字段的值。</td>
-</tr>
-<tr>
-<td>HVALS</td>
-<td>查询</td>
-<td>获取哈希表中所有值</td>
-</tr>
-<tr>
-<td>HSCAN</td>
-<td>查询</td>
-<td>迭代哈希表中的键值对。</td>
-</tr>
-</tbody>
-</table>
-
-<h2 id="toc_2">核心操作</h2>
-
-<h2 id="toc_3">总结</h2>
-
-<h2 id="toc_4">相关链接</h2>
 
 ]]></content>
   </entry>
