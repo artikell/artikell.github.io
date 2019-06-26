@@ -4,7 +4,7 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2019-06-21T15:38:44+08:00</updated>
+  <updated>2019-06-27T01:29:12+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -12,6 +12,47 @@
   </author>
   <generator uri="http://www.mweb.im">MWeb</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[限流算法整理]]></title>
+    <link href="https://artikell.github.io/15613654156668.html"/>
+    <updated>2019-06-24T16:36:55+08:00</updated>
+    <id>https://artikell.github.io/15613654156668.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">前言</h2>
+
+<p>曾经有个人问：如何给一个系统做流量限制。</p>
+
+<p>大笔一挥：redis记录访问日志，入口控制流量。然后，自我感觉很不好，于是学习相关知识，并整理相关内容。</p>
+
+<h2 id="toc_1">问题来源</h2>
+
+<p>每个API接口都是有访问上限的,当访问频率或者并发量超过其承受范围时候,我们就必须考虑限流来保证接口的可用性或者降级可用性。即接口也需要安装上保险丝,以防止非预期的请求对系统压力过大而引起的系统瘫痪.</p>
+
+<p>限流是一个兜底性的能力，业务不强依赖，所以尽可能的减低成本，但用的时候要保证正常可用。若直接使用Redis来进行限流操作，成本过高，而且增加依赖。市面上主流算法有2类：令牌 OR 漏斗。</p>
+
+<h2 id="toc_2">主流算法</h2>
+
+<h3 id="toc_3">漏桶算法</h3>
+
+<p>漏桶(Leaky Bucket)算法思路很简单,水(请求)先进入到漏桶里,漏桶以一定的速度出水(接口有响应速率),当水流入速度过大会直接溢出(访问频率超过接口响应速率),然后就拒绝请求,可以看出漏桶算法能强行限制数据的传输速率.示意图如下:</p>
+
+<p><img src="media/15613654156668/15613823262965.jpg" alt=""/></p>
+
+<p>可见这里有两个变量,一个是桶的大小,支持流量突发增多时可以存多少的水(burst),另一个是水桶漏洞的大小(rate)，</p>
+
+<p>因为漏桶的漏出速率是固定的参数,所以,即使网络中不存在资源冲突(没有发生拥塞),漏桶算法也不能使流突发(burst)到端口速率.因此,漏桶算法对于存在突发特性的流量来说缺乏效率.</p>
+
+<h3 id="toc_4">令牌算法</h3>
+
+<p>令牌桶算法(Token Bucket)和 Leaky Bucket 效果一样但方向相反的算法,更加容易理解.随着时间流逝,系统会按恒定1/QPS时间间隔(如果QPS=100,则间隔是10ms)往桶里加入Token(想象和漏洞漏水相反,有个水龙头在不断的加水),如果桶已经满了就不再加了.新请求来临时,会各自拿走一个Token,如果没有Token可拿了就阻塞或者拒绝服务.</p>
+
+<p><img src="media/15613654156668/15613823013929.jpg" alt=""/></p>
+
+<p>令牌桶的另外一个好处是可以方便的改变速度. 一旦需要提高速率,则按需提高放入桶中的令牌的速率. 一般会定时(比如100毫秒)往桶中增加一定数量的令牌, 有些变种算法则实时的计算应该增加的令牌的数量.</p>
+
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[PHP错误等级]]></title>
@@ -1739,88 +1780,6 @@ struct latencyTimeSeries {
 <ul>
 <li><a href="https://www.cnblogs.com/davidwang456/p/3539721.html">深入redis内部之redis启动过程之一</a></li>
 </ul>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[Redis高频函数解读]]></title>
-    <link href="https://artikell.github.io/15289024592933.html"/>
-    <updated>2018-06-13T23:07:39+08:00</updated>
-    <id>https://artikell.github.io/15289024592933.html</id>
-    <content type="html"><![CDATA[
-<h2 id="toc_0">前言</h2>
-
-<p>在阅读redis源码时，发现在整个源码中，作者有很多十分高频的函数在重复使用，于是决定收集一下相关函数来进行解析，以方便后续阅读源码。</p>
-
-<h2 id="toc_1">高频函数整理</h2>
-
-<h3 id="toc_2">serverAssert</h3>
-
-<p><em>serverAssert</em> 有一系列函数都是用于整体的代码做正确校验的函数：</p>
-
-<pre><code>#define serverAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_serverAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),_exit(1)))
-#define serverAssert(_e) ((_e)?(void)0 : (_serverAssert(#_e,__FILE__,__LINE__),_exit(1)))
-#define serverPanic(...) _serverPanic(__FILE__,__LINE__,__VA_ARGS__),_exit(1)
-</code></pre>
-
-<p>可以看出，<em>serverAssert</em>函数在判断错误时，将会调用日志函数并退出程序，这就不像nginx源码那样通过不断的返回进行容错判断，这也许是数据库和服务器之间的区别。</p>
-
-<h3 id="toc_3">checkType</h3>
-
-<p>该函数主要用于检查对象类型，这个函数一般都是与获取对象函数<em>lookupKeyReadOrReply</em>一起进行处理，不过其实可以将其收敛起来，不需要全部暴露在外。源码如下：</p>
-
-<pre><code>int checkType(client *c, robj *o, int type) {
-    if (o-&gt;type != type) {
-        addReply(c,shared.wrongtypeerr);
-        return 1;
-    }
-    return 0;
-}
-</code></pre>
-
-<h3 id="toc_4">lookupKey*系列</h3>
-
-<p>这个系列的函数主要用于获得相关<em>key</em>值的对象信息，主要是6个函数：<br/>
-1. lookupKey(redisDb *db, robj *key, int flags)<br/>
-2. lookupKeyReadWithFlags(redisDb *db, robj *key, int flags)<br/>
-3. lookupKeyRead(redisDb *db, robj *key)<br/>
-4. lookupKeyWrite(redisDb *db, robj *key)<br/>
-5. lookupKeyReadOrReply(client *c, robj *key, robj *reply)<br/>
-6. lookupKeyWriteOrReply(client *c, robj *key, robj *reply)</p>
-
-<p>6个函数也可以分为读写2类，其中的区别在于：读操作，需要判断是否过期，同时修改系统相关参数，而写操作，只需要判断一下超时时间即可</p>
-
-<p>2个<em>OrReply</em>结尾的函数，主要是在未获取到对象时，将返回给客户端信息。</p>
-
-<p>而<em>lookupKey</em>函数，本身只是从dict中获取到相关对象而已。</p>
-
-<h3 id="toc_5">addReply</h3>
-
-<p>这个函数，是返回给客户端信息的重要函数，源码如下：</p>
-
-<pre><code>void addReply(client *c, robj *obj) {
-    if (prepareClientToWrite(c) != C_OK) return;
-
-    if (sdsEncodedObject(obj)) {
-        if (_addReplyToBuffer(c,obj-&gt;ptr,sdslen(obj-&gt;ptr)) != C_OK)
-            _addReplyStringToList(c,obj-&gt;ptr,sdslen(obj-&gt;ptr));
-    } else if (obj-&gt;encoding == OBJ_ENCODING_INT) {
-        char buf[32];
-        size_t len = ll2string(buf,sizeof(buf),(long)obj-&gt;ptr);
-        if (_addReplyToBuffer(c,buf,len) != C_OK)
-            _addReplyStringToList(c,buf,len);
-    }
-}
-</code></pre>
-
-<p>首先，函数会判断客户端是否可写。<br/>
-之后，利用<em>_addReplyToBuffer</em>函数写入缓存区中。<br/>
-再调用<em>_addReplyStringToList</em>函数接入列表中？</p>
-
-<h2 id="toc_6">总结</h2>
-
-<p>怎么说呢，最近看数据结构，总感觉redis源码本身并不够优雅，没有nginx那种漂亮的结构以及更底层细致的操作。之后还会再继续学习。</p>
 
 ]]></content>
   </entry>

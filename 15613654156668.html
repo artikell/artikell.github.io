@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  Redis Bio模块的学习 - artikell
+  限流算法整理 - artikell
   
   </title>
  <meta name="description" content="The royal family never give up">
@@ -222,125 +222,39 @@
             <div class="large-9 medium-9 columns">
 
  <div class="markdown-body">
-<h1>Redis Bio模块的学习</h1>
+<h1>限流算法整理</h1>
 
 <h2 id="toc_0">前言</h2>
 
-<p><em>Redis</em>宣称的单进程的程序，但是，源码中到处都有为了防止顺序混乱的代码，之后，在淘汰机制中发现了<em>dbAsyncDelete</em>函数，才了解到<em>Redis</em>本身的存在异步操作的，现在，我们来看看异步IO都做了什么处理吧。</p>
+<p>曾经有个人问：如何给一个系统做流量限制。</p>
 
-<h2 id="toc_1">Bio的功能</h2>
+<p>大笔一挥：redis记录访问日志，入口控制流量。然后，自我感觉很不好，于是学习相关知识，并整理相关内容。</p>
 
-<p>Bio模块本身代码不多，可以一一来介绍各个函数的功能，首先，我们看看线程相关的一下对象。</p>
+<h2 id="toc_1">问题来源</h2>
 
-<h3 id="toc_2">线程相关对象</h3>
+<p>每个API接口都是有访问上限的,当访问频率或者并发量超过其承受范围时候,我们就必须考虑限流来保证接口的可用性或者降级可用性。即接口也需要安装上保险丝,以防止非预期的请求对系统压力过大而引起的系统瘫痪.</p>
 
-<pre><code>static pthread_t bio_threads[BIO_NUM_OPS];  //BIO线程
-static pthread_mutex_t bio_mutex[BIO_NUM_OPS]; //BIO每个线程的mutex锁变量
-static pthread_cond_t bio_newjob_cond[BIO_NUM_OPS]; //BIO线程锁的条件变量， 监听这个条件变量唤起当前线程
-static pthread_cond_t bio_step_cond[BIO_NUM_OPS]; //BIO线程阻塞锁，bioWaitStepOfType监听这个条件变量被通知该操作的执行。
-static list *bio_jobs[BIO_NUM_OPS];
-static unsigned long long bio_pending[BIO_NUM_OPS]; // BIO未执行的
-</code></pre>
+<p>限流是一个兜底性的能力，业务不强依赖，所以尽可能的减低成本，但用的时候要保证正常可用。若直接使用Redis来进行限流操作，成本过高，而且增加依赖。市面上主流算法有2类：令牌 OR 漏斗。</p>
 
-<p>从中我们可以看出，线程本身是作为一个变量存储，同时，对于每个线程，都有相关的锁以及锁条件。</p>
+<h2 id="toc_2">主流算法</h2>
 
-<p>同时，<em>Redis</em>中的线程，为每种类型的操作都分配了一个线程进行处理，其中拥有3中类型：</p>
+<h3 id="toc_3">漏桶算法</h3>
 
-<pre><code>#define BIO_CLOSE_FILE    0 /* Deferred close(2) syscall. */
-#define BIO_AOF_FSYNC     1 /* Deferred AOF fsync. */
-#define BIO_LAZY_FREE     2 /* Deferred objects freeing. */
-</code></pre>
+<p>漏桶(Leaky Bucket)算法思路很简单,水(请求)先进入到漏桶里,漏桶以一定的速度出水(接口有响应速率),当水流入速度过大会直接溢出(访问频率超过接口响应速率),然后就拒绝请求,可以看出漏桶算法能强行限制数据的传输速率.示意图如下:</p>
 
-<p>这样可以很好的控制线程的数量，这也是为什么<em>Redis</em>会设置一个<em>jobs</em>列表来存储任务的原因。</p>
+<p><img src="media/15613654156668/15613823262965.jpg" alt=""/></p>
 
-<h3 id="toc_3">bioInit 函数</h3>
+<p>可见这里有两个变量,一个是桶的大小,支持流量突发增多时可以存多少的水(burst),另一个是水桶漏洞的大小(rate)，</p>
 
-<p>bioInit函数是在整个Redis服务启动时调用，源码如下：</p>
+<p>因为漏桶的漏出速率是固定的参数,所以,即使网络中不存在资源冲突(没有发生拥塞),漏桶算法也不能使流突发(burst)到端口速率.因此,漏桶算法对于存在突发特性的流量来说缺乏效率.</p>
 
-<pre><code>void bioInit(void) {
-    pthread_attr_t attr;
-    pthread_t thread;
-    size_t stacksize;
-    int j;
+<h3 id="toc_4">令牌算法</h3>
 
-    /* Initialization of state vars and objects */
-    for (j = 0; j &lt; BIO_NUM_OPS; j++) {
-        pthread_mutex_init(&amp;bio_mutex[j],NULL);
-        pthread_cond_init(&amp;bio_newjob_cond[j],NULL);
-        pthread_cond_init(&amp;bio_step_cond[j],NULL);
-        bio_jobs[j] = listCreate();
-        bio_pending[j] = 0;
-    }
+<p>令牌桶算法(Token Bucket)和 Leaky Bucket 效果一样但方向相反的算法,更加容易理解.随着时间流逝,系统会按恒定1/QPS时间间隔(如果QPS=100,则间隔是10ms)往桶里加入Token(想象和漏洞漏水相反,有个水龙头在不断的加水),如果桶已经满了就不再加了.新请求来临时,会各自拿走一个Token,如果没有Token可拿了就阻塞或者拒绝服务.</p>
 
-    /* Set the stack size as by default it may be small in some system */
-    pthread_attr_init(&amp;attr);
-    pthread_attr_getstacksize(&amp;attr,&amp;stacksize);
-    if (!stacksize) stacksize = 1; /* The world is full of Solaris Fixes */
-    while (stacksize &lt; REDIS_THREAD_STACK_SIZE) stacksize *= 2;
-    pthread_attr_setstacksize(&amp;attr, stacksize);
+<p><img src="media/15613654156668/15613823013929.jpg" alt=""/></p>
 
-    for (j = 0; j &lt; BIO_NUM_OPS; j++) {
-        void *arg = (void*)(unsigned long) j;
-        if (pthread_create(&amp;thread,&amp;attr,bioProcessBackgroundJobs,arg) != 0) {
-            serverLog(LL_WARNING,&quot;Fatal: Can&#39;t initialize Background Jobs.&quot;);
-            exit(1);
-        }
-        bio_threads[j] = thread;
-    }
-}
-</code></pre>
-
-<p>在BIO初始化时，首先是对线程相关的对象进行初始化，包括<em>线程锁、锁条件、线程队列</em>等。<br/>
-在之后，通过<em>pthread_attr_init</em>函数对线程环境进行初始化，并对栈大小进行重设。<br/>
-最后，根据<em>线程环境</em>创建了一系列的线程，用于后续使用。</p>
-
-<h3 id="toc_4">bioCreateBackgroundJob 函数</h3>
-
-<p>该函数主要是用于添加一个异步任务，传入的参数比较简单，包括Type和3个变量。这些都存储在bio_job结构体中：</p>
-
-<pre><code>struct bio_job {
-    time_t time; /* Time at which the job was created. */
-    void *arg1, *arg2, *arg3;
-};
-</code></pre>
-
-<p>关于为啥是3个变量，主要是针对不同类型的异步事件使用，3个变量的排列组合共有8种，差不多够用了。<br/>
-代码中主要是对于惰性淘汰进行分类：若第一个指针，则代表释放object；第二个指针代表释放一个数据库；第三个指针代表释放一个哈希表。</p>
-
-<p><em>bioCreateBackgroundJob</em> 函数在赋值完，会将相关的线程进行唤醒让其来主动处理队列中的任务。这其中的逻辑与协程相似，但却有所不同。</p>
-
-<h3 id="toc_5">bioProcessBackgroundJobs 函数</h3>
-
-<p>该函数在创建线程后，会直接执行，那么本身对线程做了一些设定：<br/>
-<code><br/>
-    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);<br/>
-    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);<br/>
-</code><br/>
-首先，使线程保持可控制性，这样能线程能被杀死，这样做的目的暂时是为了debug调试。</p>
-
-<p>之后，函数对线程进行了信号量的设置：</p>
-
-<pre><code>sigemptyset(&amp;sigset);
-sigaddset(&amp;sigset, SIGALRM);
-if (pthread_sigmask(SIG_BLOCK, &amp;sigset, NULL))
-    serverLog(LL_WARNING,
-        &quot;Warning: can&#39;t mask SIGALRM in bio.c thread: %s&quot;, strerror(errno));
-</code></pre>
-
-<p>这个之后可以多了解一番。</p>
-
-<p>之后，函数就进入了一个死循环用来不断的处理来自队列的任务，包括AOF同步等。</p>
-
-<h2 id="toc_6">总结</h2>
-
-<p><em>Redis</em>的线程使用比较谨慎，其中仅仅只包含3种类型的线程事件。这样保证了Redis本身代码的简洁。</p>
-
-<h2 id="toc_7">相关链接</h2>
-
-<ul>
-<li><a href="https://www.cnblogs.com/lijunamneg/archive/2013/01/25/2877211.html">线程取消</a></li>
-<li><a href="https://yq.aliyun.com/articles/58703?utm_source=tool.lu">bio学习</a></li>
-</ul>
+<p>令牌桶的另外一个好处是可以方便的改变速度. 一旦需要提高速率,则按需提高放入桶中的令牌的速率. 一般会定时(比如100毫秒)往桶中增加一定数量的令牌, 有些变种算法则实时的计算应该增加的令牌的数量.</p>
 
 
 </div>
@@ -352,15 +266,13 @@ if (pthread_sigmask(SIG_BLOCK, &amp;sigset, NULL))
   <div class="large-6 columns">
 	<div class="text-left" style="padding:15px 0px;">
 		
-	        <a href="15286369556294.html"  title="Previous Post: Redis常用数据类型介绍、使用场景">&laquo; Redis常用数据类型介绍、使用场景</a>
-	    
 	</div>
   </div>
   <div class="large-6 columns">
 	<div class="text-right" style="padding:15px 0px;">
 		
-	        <a href="15286261757400.html" 
-	        title="Next Post: Redis 跳跃表">Redis 跳跃表 &raquo;</a>
+	        <a href="15610970687582.html" 
+	        title="Next Post: PHP错误等级">PHP错误等级 &raquo;</a>
 	    
 	</div>
   </div>
@@ -373,7 +285,7 @@ if (pthread_sigmask(SIG_BLOCK, &amp;sigset, NULL))
 </div>
 <script type="text/javascript">
 	$(function(){
-		var currentURL = '15286278830553.html';
+		var currentURL = '15613654156668.html';
 		$('#side-nav a').each(function(){
 			if($(this).attr('href') == currentURL){
 				$(this).parent().addClass('active');
