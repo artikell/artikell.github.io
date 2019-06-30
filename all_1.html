@@ -47,6 +47,8 @@
         <li><label>Optimize</label></li>
 
           
+            <li><a title="系统调用探真" href="15619022452968.html">系统调用探真</a></li>
+          
             <li><a title="限流算法整理" href="15613654156668.html">限流算法整理</a></li>
           
             <li><a title="PHP错误等级" href="15610970687582.html">PHP错误等级</a></li>
@@ -144,6 +146,8 @@
                     
                       <li class="side-title"><span>Optimize</span></li>
                         
+                          <li><a title="系统调用探真" href="15619022452968.html">系统调用探真</a></li>
+                        
                           <li><a title="限流算法整理" href="15613654156668.html">限流算法整理</a></li>
                         
                           <li><a title="PHP错误等级" href="15610970687582.html">PHP错误等级</a></li>
@@ -226,83 +230,67 @@
 
 	
 		<div class="markdown-body">
-		<h1>Redis高频函数解读</h1>
+		<h1>Redis启动过程分析</h1>
 
 		<h2 id="toc_0">前言</h2>
 
-<p>在阅读redis源码时，发现在整个源码中，作者有很多十分高频的函数在重复使用，于是决定收集一下相关函数来进行解析，以方便后续阅读源码。</p>
+<p>一个优秀的软件都有一个优秀的启动过程来保证整个流程的高可用性。</p>
 
-<h2 id="toc_1">高频函数整理</h2>
+<h2 id="toc_1">Redis的各个模式</h2>
 
-<h3 id="toc_2">serverAssert</h3>
+<p>要说起redis本身的启动的话，就要先区分redis本身的3个模式：</p>
 
-<p><em>serverAssert</em> 有一系列函数都是用于整体的代码做正确校验的函数：</p>
+<ol>
+<li>主从模式</li>
+<li>哨兵模式</li>
+<li>集群模式</li>
+</ol>
 
-<pre><code>#define serverAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_serverAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),_exit(1)))
-#define serverAssert(_e) ((_e)?(void)0 : (_serverAssert(#_e,__FILE__,__LINE__),_exit(1)))
-#define serverPanic(...) _serverPanic(__FILE__,__LINE__,__VA_ARGS__),_exit(1)
-</code></pre>
+<h3 id="toc_2">主从模式</h3>
 
-<p>可以看出，<em>serverAssert</em>函数在判断错误时，将会调用日志函数并退出程序，这就不像nginx源码那样通过不断的返回进行容错判断，这也许是数据库和服务器之间的区别。</p>
+<ol>
+<li><p>redis的复制功能是支持多个数据库之间的数据同步。一类是主数据库（master）一类是从数据库（slave），主数据库可以进行读写操作，当发生写操作的时候自动将数据同步到从数据库，而从数据库一般是只读的，并接收主数据库同步过来的数据，一个主数据库可以有多个从数据库，而一个从数据库只能有一个主数据库。</p></li>
+<li><p>通过redis的复制功能可以很好的实现数据库的读写分离，提高服务器的负载能力。主数据库主要进行写操作，而从数据库负责读操作。</p></li>
+</ol>
 
-<h3 id="toc_3">checkType</h3>
+<h3 id="toc_3">哨兵模式</h3>
 
-<p>该函数主要用于检查对象类型，这个函数一般都是与获取对象函数<em>lookupKeyReadOrReply</em>一起进行处理，不过其实可以将其收敛起来，不需要全部暴露在外。源码如下：</p>
+<p>redis的sentinel系统用于管理多个redis服务器，该系统主要执行三个任务：监控、提醒、自动故障转移。</p>
 
-<pre><code>int checkType(client *c, robj *o, int type) {
-    if (o-&gt;type != type) {
-        addReply(c,shared.wrongtypeerr);
-        return 1;
-    }
-    return 0;
-}
-</code></pre>
+<ol>
+<li>监控（Monitoring）： Redis Sentinel实时监控主服务器和从服务器运行状态，并且实现自动切换。</li>
+<li>提醒（Notification）：当被监控的某个 Redis 服务器出现问题时， Redis Sentinel 可以向系统管理员发送通知， 也可以通过 API 向其他程序发送通知。</li>
+<li>自动故障转移（Automatic failover）： 当一个主服务器不能正常工作时，Redis Sentinel 可以将一个从服务器升级为主服务器， 并对其他从服务器进行配置，让它们使用新的主服务器。当应用程序连接Redis 服务器时， Redis Sentinel会告之新的主服务器地址和端口。</li>
+</ol>
 
-<h3 id="toc_4">lookupKey*系列</h3>
+<h3 id="toc_4">集群模式</h3>
 
-<p>这个系列的函数主要用于获得相关<em>key</em>值的对象信息，主要是6个函数：<br/>
-1. lookupKey(redisDb *db, robj *key, int flags)<br/>
-2. lookupKeyReadWithFlags(redisDb *db, robj *key, int flags)<br/>
-3. lookupKeyRead(redisDb *db, robj *key)<br/>
-4. lookupKeyWrite(redisDb *db, robj *key)<br/>
-5. lookupKeyReadOrReply(client *c, robj *key, robj *reply)<br/>
-6. lookupKeyWriteOrReply(client *c, robj *key, robj *reply)</p>
+<p>redis集群是一个无中心的分布式Redis存储架构，可以在多个节点之间进行数据共享，解决了Redis高可用、可扩展等问题。redis集群提供了以下两个好处</p>
 
-<p>6个函数也可以分为读写2类，其中的区别在于：读操作，需要判断是否过期，同时修改系统相关参数，而写操作，只需要判断一下超时时间即可</p>
+<ol>
+<li>将数据自动切分(split)到多个节点</li>
+<li>当集群中的某一个节点故障时，redis还可以继续处理客户端的请求。</li>
+</ol>
 
-<p>2个<em>OrReply</em>结尾的函数，主要是在未获取到对象时，将返回给客户端信息。</p>
+<p>一个 Redis 集群包含 16384 个哈希槽（hash slot），数据库中的每个数据都属于这16384个哈希槽中的一个。集群使用公式 CRC16(key) % 16384 来计算键 key 属于哪个槽。集群中的每一个节点负责处理一部分哈希槽。</p>
 
-<p>而<em>lookupKey</em>函数，本身只是从dict中获取到相关对象而已。</p>
+<h2 id="toc_5">启动解析</h2>
 
-<h3 id="toc_5">addReply</h3>
+<h3 id="toc_6">环境初始化</h3>
 
-<p>这个函数，是返回给客户端信息的重要函数，源码如下：</p>
+<h3 id="toc_7">命令获取并处理</h3>
 
-<pre><code>void addReply(client *c, robj *obj) {
-    if (prepareClientToWrite(c) != C_OK) return;
+<h2 id="toc_8">相关链接</h2>
 
-    if (sdsEncodedObject(obj)) {
-        if (_addReplyToBuffer(c,obj-&gt;ptr,sdslen(obj-&gt;ptr)) != C_OK)
-            _addReplyStringToList(c,obj-&gt;ptr,sdslen(obj-&gt;ptr));
-    } else if (obj-&gt;encoding == OBJ_ENCODING_INT) {
-        char buf[32];
-        size_t len = ll2string(buf,sizeof(buf),(long)obj-&gt;ptr);
-        if (_addReplyToBuffer(c,buf,len) != C_OK)
-            _addReplyStringToList(c,buf,len);
-    }
-}
-</code></pre>
-
-<p>首先，函数会判断客户端是否可写。<br/>
-之后，利用<em>_addReplyToBuffer</em>函数写入缓存区中。<br/>
-再调用<em>_addReplyStringToList</em>函数接入列表中？</p>
-
-<h2 id="toc_6">总结</h2>
-
-<p>怎么说呢，最近看数据结构，总感觉redis源码本身并不够优雅，没有nginx那种漂亮的结构以及更底层细致的操作。之后还会再继续学习。</p>
+<ul>
+<li><a href="https://www.cnblogs.com/davidwang456/p/3539721.html">深入redis内部之redis启动过程之一</a></li>
+</ul>
 
 
 		</div>
+	
+
+ 
 	
 
  
