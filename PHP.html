@@ -137,8 +137,6 @@
         <li><label>PHP</label></li>
 
           
-            <li><a title="PHP基本数据结构" href="15629235064982.html">PHP基本数据结构</a></li>
-          
             <li><a title="php-fpm学习" href="15629232560831.html">php-fpm学习</a></li>
           
             <li><a title="PHP错误等级" href="15610970687582.html">PHP错误等级</a></li>
@@ -240,8 +238,6 @@
                     
                       <li class="side-title"><span>PHP</span></li>
                         
-                          <li><a title="PHP基本数据结构" href="15629235064982.html">PHP基本数据结构</a></li>
-                        
                           <li><a title="php-fpm学习" href="15629232560831.html">php-fpm学习</a></li>
                         
                           <li><a title="PHP错误等级" href="15610970687582.html">PHP错误等级</a></li>
@@ -260,14 +256,184 @@
 
 	
 		<div class="markdown-body">
-		<h1>PHP基本数据结构</h1>
+		<h1>php-fpm学习</h1>
 
-		
+		<h2 id="toc_0">前言</h2>
+
+<p>PHP提供了多种SAPI接口，例如 apache2hander、fastcgi、cli等等。当然，php-fpm也是其中一种。相比其他接口，php-fpm运用更加广泛。</p>
+
+<p>PHP-FPM官方的主要特征：</p>
+
+<ul>
+<li>支持平滑停止/启动的高级进程管理功能；</li>
+<li>可以工作于不同的 uid/gid/chroot 环境下，并监听不同的端口和使用不同的 php.ini 配置文件（可取代 safe_mode 的设置）；</li>
+<li>stdout 和 stderr 日志记录;</li>
+<li>在发生意外情况的时候能够重新启动并缓存被破坏的 opcode;</li>
+<li>文件上传优化支持;</li>
+<li>&quot;慢日志&quot; - 记录脚本（不仅记录文件名，还记录 PHP backtrace 信息，可以使用 ptrace或者类似工具读取和分析远程进程的运行数据）运行所导致的异常缓慢;</li>
+<li>fastcgi_finish_request() - 特殊功能：用于在请求完成和刷新数据后，继续在后台执行耗时的工作（录入视频转换、统计处理等）；</li>
+<li>动态／静态子进程产生；</li>
+<li>基本 SAPI 运行状态信息（类似Apache的 mod_status）；</li>
+<li>基于 php.ini 的配置文件。</li>
+</ul>
+
+<h2 id="toc_1">fpm的启动</h2>
+
+<p>php-fpm启动流程主要分为三步：<br/>
+1. 配置和命令行参数解析<br/>
+2. 环境初始化<br/>
+3. 进程启动并处理请求</p>
+
+<h2 id="toc_2">核心模块初始化</h2>
+
+<pre><code>    if (0 &gt; fpm_php_init_main()           || // 启动
+        0 &gt; fpm_stdio_init_main()         || // 设置输入和输出
+        0 &gt; fpm_conf_init_main(test_conf, force_daemon) || // 配置初始化
+        0 &gt; fpm_unix_init_main()          ||
+        0 &gt; fpm_scoreboard_init_main()    || // 计分板初始化
+        0 &gt; fpm_pctl_init_main()          || // 控制初始化
+        0 &gt; fpm_env_init_main()           || // 环境初始化
+        0 &gt; fpm_signals_init_main()       || // 信号初始化
+        0 &gt; fpm_children_init_main()      || // 子进程初始化
+        0 &gt; fpm_sockets_init_main()       || // socket初始化
+        0 &gt; fpm_worker_pool_init_main()   || // 工作进程初始化
+        0 &gt; fpm_event_init_main()) { // 事件初始化
+
+        if (fpm_globals.test_successful) {
+            exit(FPM_EXIT_OK);
+        } else {
+            zlog(ZLOG_ERROR, &quot;FPM initialization failed&quot;);
+            return -1;
+        }
+    
+</code></pre>
+
+<ol>
+<li>fpm_php_init_main：初始化cleanup链表</li>
+<li>fpm_stdio_init_main：初始化命令行的输入输出，输出至/dev/null文件</li>
+<li>fpm_conf_init_main：解析配置信息</li>
+<li>fpm_unix_init_main：初始化环境信息，包括内存限制以及僵尸化进程</li>
+<li>fpm_scoreboard_init_main：计分板初始化，用于统计子进程状态</li>
+<li>fpm_pctl_init_main：进程控制初始化，主要是保存可执行文件的路径，用于后续重启进程</li>
+<li>fpm_env_init_main：环境初始化，主要是设置进程标题</li>
+<li>fpm_signals_init_main：信号初始化，初始化信息屏蔽和处理函数</li>
+<li>fpm_children_init_main：子进程初始化，主要是设置<code>emergency_restart_threshold</code>参数</li>
+<li>fpm_sockets_init_main：初始化socket描述符</li>
+<li>fpm_worker_pool_init_main：初始化工作池对象，只是挂着一个清空的函数</li>
+<li>fpm_event_init_main：初始化事件对象，主要是设置最大的事件数</li>
+</ol>
+
+<h2 id="toc_3">进程模型</h2>
+
+<p>进程模型主要是fpm的父子进程的关系控制，这就涉及到了进程间通信的问题。<br/>
+在fpm中，进程间通信主要有2类：信号下发的信号和数据上报的共享内存</p>
+
+<h3 id="toc_4">进程间通信</h3>
+
+<h4 id="toc_5">信号</h4>
+
+<p>信号主要有：<br/>
+1. SIGINT/SIGTERM/SIGQUIT: 退出fpm，在master收到退出信号后将向所有的worker进程发送退出信号，然后master退出<br/>
+2. SIGUSR1: 重新加载日志文件，生产环境中通常会对日志进行切割，切割后会生成一个新的日志文件，如果fpm不重新加载将无法继续写入日志，这个时候就需要向master发送一个USR1的信号<br/>
+3. SIGUSR2: 重启fpm，首先master也是会向所有的worker进程发送退出信号，然后master会调用execvp()重新启动fpm，最后旧的master退出<br/>
+4. SIGCHLD: 这个信号是子进程退出时操作系统发送给父进程的，子进程退出时，内核将子进程置为僵尸状态，这个进程称为僵尸进程，它只保留最小的一些内核数据结构，以便父进程查询子进程的退出状态，只有当父进程调用wait或者waitpid函数查询子进程退出状态后子进程才告终止，fpm中当worker进程因为异常原因(比如coredump了)退出而非master主动杀掉时master将受到此信号，这个时候父进程将调用waitpid()查下子进程的退出，然后检查下是不是需要重新fork新的worker</p>
+
+<p>其中，信号的处理是通过挂载函数sig_handler写入管道，后续由事件模型处理管道在发送信号给子进程，这也成功实现了非阻塞流程。</p>
+
+<h4 id="toc_6">共享内存</h4>
+
+<p>共享内存的实践则是用在计分板功能上。fpm为了获取子进程状态，则为每个子进程开辟一块共享内存区域，子进程自动更新相关数据，而由主进程来获取并进行相关操作。同时计分板还担任了进程数控制的功能，如果在创建子进程时未获取到计分板对象，则无法fork新进程</p>
+
+<p>计分板状态：<br/>
+1. FPM_REQUEST_ACCEPTING 空闲状态(等待请求)<br/>
+2. FPM_REQUEST_READING_HEADERS 读取头信息<br/>
+3. FPM_REQUEST_INFO 获取请求信息<br/>
+4. FPM_REQUEST_EXECUTING 执行状态<br/>
+5. FPM_REQUEST_END 请求结束状态</p>
+
+<p>计分板相关结构体：</p>
+
+<pre><code>struct fpm_scoreboard_proc_s {
+    union {
+        atomic_t lock;
+        char dummy[16];
+    };//锁状态
+    int used; //使用标识 0=未使用 1=正在使用
+    time_t start_epoch; //使用开始时间
+    pid_t pid; //进程id
+    unsigned long requests; //处理请求次数
+    enum fpm_request_stage_e request_stage; //处理请求阶段
+    struct timeval accepted; //accept请求时间
+    struct timeval duration; //脚本总执行时间
+    time_t accepted_epoch;//accept请求时间戳(秒)
+    struct timeval tv; //活跃时间
+    char request_uri[128]; //请求路径
+    char query_string[512]; //请求参数
+    char request_method[16]; //请求方式
+    size_t content_length; //请求内容长度 
+    char script_filename[256];//脚本名称
+    char auth_user[32];
+#ifdef HAVE_TIMES
+    struct tms cpu_accepted;
+    struct timeval cpu_duration;
+    struct tms last_request_cpu;
+    struct timeval last_request_cpu_duration;
+#endif
+    size_t memory;//脚本占用的内存大小
+};
+</code></pre>
+
+<h3 id="toc_7">进程模式</h3>
+
+<p>fpm存在三种不同的进程管理方式：<br/>
+- <strong>static</strong>: 这种方式比较简单，在启动时 master 按照pm.max_children配置 fork 出相应数量的 worker 进程，即 worker 进程数是固定不变的；<br/>
+- <strong>dynamic</strong>: 动态进程管理，首先在 fpm 启动时按照pm.start_servers初始化一定数量的 worker，运行期间如果 master 发现空闲 worker 数低于pm.min_spare_servers配置数（表示请求比较多，worker 处理不过来了）则会 fork worker 进程，但总的 worker 数不能超过pm.max_children，如果 master 发现空闲 worker 数超过了pm.max_spare_servers(表示闲着的 worker 太多了)则会杀掉一些 worker，避免占用过多资源，master 通过这 4 个值来控制 worker 数；<br/>
+- <strong>ondemand</strong>: 这种方式一般很少用，在启动时不分配 worker 进程，等到有请求了后再通知 master 进程 fork worker 进程，总的 worker 数不超过pm.max_children，处理完成后 worker 进程不会立即退出，当空闲时间超过pm.process_idle_timeout后再退出；</p>
+
+<h3 id="toc_8">事件模型</h3>
+
+<p>事件模型主要针对master进程而言，同时需要了解的是，master进程是通过链表和epoll等事件模型来实现自身的事件循环。</p>
+
+<pre><code>void fpm_event_loop(int err)
+{
+    //创建一个io read的监听事件，这里监听的就是在fpm_init()阶段中通过socketpair()创建管道sp[0]
+    //当sp[0]可读时将回调fpm_got_signal()
+    fpm_event_set(&amp;signal_fd_event, fpm_signals_get_fd(), FPM_EV_READ, &amp;fpm_got_signal, NULL);
+    fpm_event_add(&amp;signal_fd_event, 0);
+
+    //如果在php-fpm.conf配置了request_terminate_timeout则启动心跳检查
+    if (fpm_globals.heartbeat &gt; 0) {
+        fpm_pctl_heartbeat(NULL, 0, NULL);
+    }
+    //定时触发进程管理
+    fpm_pctl_perform_idle_server_maintenance_heartbeat(NULL, 0, NULL);
+    
+    //进入事件循环，master进程将阻塞在此
+    while (1) {
+        ...
+        //等待IO事件
+        ret = module-&gt;wait(fpm_event_queue_fd, timeout);
+        ...
+        //检查定时器事件
+        ...
+    }
+}
+</code></pre>
+
+<p>其中主要的3大事件分别是：<br/>
+1. sp[1]管道可读事件<br/>
+2. fpm_pctl_perform_idle_server_maintenance_heartbeat 进程管理事件<br/>
+3. fpm_pctl_heartbeat 超时管理事件</p>
+
+<h2 id="toc_9">相关链接</h2>
+
+<ol>
+<li><a href="https://www.fanhaobai.com/2017/10/internal-php-fpm.html">深入源码剖析PHP-FPM</a></li>
+<li><a href="https://blog.csdn.net/mijar2016/article/details/53414402">PHP源码分析 - PHP-FPM scoreboard模块介绍</a></li>
+</ol>
+
 
 		</div>
-	
-
- 
 	
 
  

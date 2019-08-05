@@ -4,7 +4,7 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2019-07-01T10:51:03+08:00</updated>
+  <updated>2019-08-05T16:14:13+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -37,8 +37,9 @@
 int fd = open(argv[1],O_RDWR|O_CREAT|O_TRUNC,0644);<br/>
 mmap(NULL,sizeof(struct STU),PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);<br/>
 munmap(p,sizeof(student))<br/>
-</code><br/>
-<img src="media/15649767035810/15649864204288.jpg" alt="mmap模型图示"/></p>
+</code> </p>
+
+<p><img src="media/15649767035810/15649864204288.jpg" alt="mmap模型图示"/></p>
 
 <h3 id="toc_3">shm</h3>
 
@@ -103,16 +104,6 @@ ftok会组合三个值来产生key：<br/>
 <li><a href="https://www.cnblogs.com/zhaoyl/p/5515317.html">mmap为什么比read/write快(兼论buffercache和pagecache)</a></li>
 <li><a href="https://www.cnblogs.com/alantu2018/p/8472097.html">内存管理概述、内存分配与释放、地址映射机制（mm_struct, vm_area_struct）、malloc/free 的实现</a></li>
 </ul>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[PHP基本数据结构]]></title>
-    <link href="https://artikell.github.io/15629235064982.html"/>
-    <updated>2019-07-12T17:25:06+08:00</updated>
-    <id>https://artikell.github.io/15629235064982.html</id>
-    <content type="html"><![CDATA[
 
 ]]></content>
   </entry>
@@ -1528,6 +1519,81 @@ go1.11 有 2个子版本 (2018-08)</p>
 <a href="Go%201.9.2%20%E7%9A%84%20bug">http://way.xiaojukeji.com/article/10750</a><br/>
 <a href="1.8%E7%9A%84%E6%94%B9%E5%8A%A8">https://studygolang.com/articles/9298</a><br/>
 <a href="Go%201.10%E4%B8%AD%E5%80%BC%E5%BE%97%E5%85%B3%E6%B3%A8%E7%9A%84%E5%87%A0%E4%B8%AA%E5%8F%98%E5%8C%96">http://ju.outofmemory.cn/entry/344575</a></p>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[总结docker搭建服务过程]]></title>
+    <link href="https://artikell.github.io/15390880867263.html"/>
+    <updated>2018-10-09T20:28:06+08:00</updated>
+    <id>https://artikell.github.io/15390880867263.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">搭建步骤</h2>
+
+<ol>
+<li><p>安装docker服务</p>
+
+<p>下载地址：<a href="https://docs.docker.com/docker-for-mac/install/#download-docker-for-mac">https://docs.docker.com/docker-for-mac/install/#download-docker-for-mac</a></p>
+
+<p>下载Stable channel版本，作为一个稳定版本，之后根据文档进行docker服务的安装。</p></li>
+<li><p>启动后，运行命令<code>docker pull ubuntu</code>，拉取<code>ubuntu</code>镜像。</p></li>
+<li><p>新建一个容器服务，并得到容器编号：</p>
+
+<pre><code>$ docker run --privileged=true -t -i -d ubuntu /bin/bash
+</code></pre></li>
+<li><p>运行<code>docker ps</code>查看容器列表</p></li>
+<li><p>运行<code>docker exec -it 83f7b8757c17 /bin/bash</code>命令，进入相关容器</p></li>
+<li><p>安装ssh相关服务：</p>
+
+<pre><code>$ sudo apt install openssh-server
+$ sudo apt install openssh-client
+</code></pre></li>
+<li><p>修改ssh相关配置：</p>
+
+<pre><code>$ vi /etc/ssh/sshd_config
+
+RSAAuthentication yes #启用 RSA 认证
+PubkeyAuthentication yes #启用公钥私钥配对认证方式
+AuthorizedKeysFile .ssh/authorized_keys #公钥文件路径（和上面生成的文件同）
+PermitRootLogin yes #root能使用ssh登录
+</code></pre></li>
+<li><p>运行命令<code>passwd</code>修改root账号密码</p></li>
+<li><p>重启ssh服务并设置为开机自启：</p>
+
+<pre><code>$ service sshd restart
+$ chkconfig sshd on
+</code></pre></li>
+<li><p>退出容器，并提交成镜像文件</p>
+
+<pre><code>$ sudo docker commit [container id] skyfire/ssh
+</code></pre></li>
+<li><p>生成一个新的docker容器，并映射端口</p>
+
+<pre><code>docker run -t -i -d -p 10022:22 skyfire/ssh /bin/bash
+</code></pre></li>
+<li><p>利用ssh连接容器服务</p>
+
+<pre><code>$ ssh root@localhost -p 10022
+</code></pre></li>
+</ol>
+
+<h2 id="toc_1">相关问题</h2>
+
+<ol>
+<li><code>docker</code>容器如何保证后台运行？</li>
+<li><code>docker</code>能否不生成镜像而直接映射端口？</li>
+</ol>
+
+<h2 id="toc_2">相关链接</h2>
+
+<ol>
+<li><a href="http://blog.csdn.net/qq626387/article/details/50506636">Docker入门实战-SSH连接docker容器</a></li>
+<li><a href="https://segmentfault.com/a/1190000002567459">Docker学习之路（六）用commit命令创建镜像</a></li>
+<li><a href="http://blog.sina.com.cn/s/blog_3dd53f260102uyj0.html">ssh问题：ssh_exchange_identification</a></li>
+<li><a href="http://blog.csdn.net/qq_29994609/article/details/51730640">Docker学习笔记-Docker端口映射</a></li>
+<li><a href="http://blog.csdn.net/minicto/article/details/63684583">ubuntu中ssh-server的安装与开机启动</a></li>
+</ol>
 
 ]]></content>
   </entry>
