@@ -4,7 +4,7 @@
   <title><![CDATA[artikell]]></title>
   <link href="https://artikell.github.io/atom.xml" rel="self"/>
   <link href="https://artikell.github.io/"/>
-  <updated>2019-07-01T02:33:26+08:00</updated>
+  <updated>2019-07-01T10:51:03+08:00</updated>
   <id>https://artikell.github.io/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -12,6 +12,452 @@
   </author>
   <generator uri="http://www.mweb.im">MWeb</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[共享内存探真]]></title>
+    <link href="https://artikell.github.io/15649767035810.html"/>
+    <updated>2019-08-05T11:45:03+08:00</updated>
+    <id>https://artikell.github.io/15649767035810.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">前言</h2>
+
+<p>当有人问起共享内存的实现的时候，被人问倒了。</p>
+
+<h2 id="toc_1">共享内存类型</h2>
+
+<p>现有系统共有2类共享内存的方法：mmap、shm。下面来介绍2类的优缺点：</p>
+
+<h3 id="toc_2">mmap</h3>
+
+<p>机制： 在磁盘上建立一个文件，每个进程存储器中，单独开辟一个空间来映射，保存到实际硬盘，实际并没有反映到主存上<br/>
+优点： 存储量大<br/>
+缺点： 读取和写入速度比较慢<br/>
+使用方法：<br/>
+<code><br/>
+int fd = open(argv[1],O_RDWR|O_CREAT|O_TRUNC,0644);<br/>
+mmap(NULL,sizeof(struct STU),PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);<br/>
+munmap(p,sizeof(student))<br/>
+</code><br/>
+<img src="media/15649767035810/15649864204288.jpg" alt="mmap模型图示"/></p>
+
+<h3 id="toc_3">shm</h3>
+
+<p>机制： 每个进程的共享内存都直接映射到实际物理存储器上，shm保存到物理存储器(主存)，实际的存储量直接反映到主存上<br/>
+优点：进程间访问速度比磁盘快<br/>
+缺点： 存储量不能非常大<br/>
+使用方法：<br/>
+<code><br/>
+key_t ftok(const char *pathname, int proj_id) <br/>
+int shmget( key_t shmkey , int shmsiz , int flag );<br/>
+void *shmat( int shmid , char *shmaddr , int shmflag );<br/>
+</code></p>
+
+<p><img src="media/15649767035810/15649864440502.jpg" alt="shm模型图示"/></p>
+
+<h3 id="toc_4">mmap和shm的差异</h3>
+
+<p>1、mmap是在磁盘上建立一个文件，每个进程地址空间中开辟出一块空间进行映射。<br/>
+而对于shm而言，shm每个进程最终会映射到同一块物理内存。shm保存在物理内存，这样读写的速度要比磁盘要快，但是存储量不是特别大。<br/>
+2、相对于shm来说，mmap更加简单，调用更加方便，所以这也是大家都喜欢用的原因。<br/>
+3、另外mmap有一个好处是当机器重启，因为mmap把文件保存在磁盘上，这个文件还保存了操作系统同步的映像，所以mmap不会丢失，但是shmget就会丢失。</p>
+
+<h2 id="toc_5">shm实现</h2>
+
+<p>结构图示都如此明白，那共享内存功能如何实现？通过页表。</p>
+
+<p><img src="media/15649767035810/15649869796950.jpg" alt=""/></p>
+
+<p>ftok将一个已存在的路径名和一个整数标识符转换成一个key_t值。<br/>
+<code><br/>
+key_t ftok(const char *pathname, int proj_id)<br/>
+</code><br/>
+ftok会组合三个值来产生key：<br/>
+1. pathname所在的文件系统的信息。<br/>
+2. 该文件在本文件系统内的索引节点号。<br/>
+3. id的低序8位。 </p>
+
+<p>在使用shm方法时，可以通过ftok和IPC_PRIVATE的方法结合shm_get方法申请一块共享内存项。当使用shmat方法时，会将页表加载至进程的页表项中。</p>
+
+<h2 id="toc_6">mmap实现</h2>
+
+<p><img src="media/15649767035810/15649879653349.jpg" alt=""/></p>
+
+<p>mmap的执行，仅仅是在内核中建立了文件与虚拟内存空间的对应关系。用户访问这些虚拟内存空间时，页面表里面是没有这些空间的表项的。当用户程序试图访问这些映射的空间时，于是产生缺页异常。内核捕捉这些异常，逐渐将文件载入。<br/>
+所谓的载入过程，具体的操作就是read和write在管理pagecache。Vma的结构体中有很文件操作集。vma操作集中会有自己关于page cache的操作集合。这样，虽然是两种不同的系统调用，由于操作和调用触发的路径不同。但是最后还是落实到了page cache的管理。实现了文件内容的操作。</p>
+
+<h2 id="toc_7">问题</h2>
+
+<ol>
+<li>进程是如何管理内存的</li>
+</ol>
+
+<h2 id="toc_8">相关链接</h2>
+
+<ul>
+<li><a href="https://www.cnblogs.com/52php/p/5861372.html">Linux进程间通信（六）：共享内存 shmget()、shmat()、shmdt()、shmctl()</a></li>
+<li><a href="https://blog.csdn.net/hj605635529/article/details/73163513">mmap映射区和shm共享内存的区别总结</a></li>
+<li><a href="https://blog.csdn.net/xhu_eternalcc/article/details/16801825">IPC之IPC_PRIVATE与ftok比较</a></li>
+<li><a href="http://blog.chinaunix.net/uid-24517549-id-4114814.html">共享内存的常用函数原理剖析</a></li>
+<li><a href="https://blog.csdn.net/edwardlulinux/article/details/8604400">Mmap的实现原理和应用</a></li>
+<li><a href="http://ju.outofmemory.cn/entry/224106">mmap实例及原理分析</a></li>
+<li><a href="https://www.cnblogs.com/zhaoyl/p/5515317.html">mmap为什么比read/write快(兼论buffercache和pagecache)</a></li>
+<li><a href="https://www.cnblogs.com/alantu2018/p/8472097.html">内存管理概述、内存分配与释放、地址映射机制（mm_struct, vm_area_struct）、malloc/free 的实现</a></li>
+</ul>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[PHP基本数据结构]]></title>
+    <link href="https://artikell.github.io/15629235064982.html"/>
+    <updated>2019-07-12T17:25:06+08:00</updated>
+    <id>https://artikell.github.io/15629235064982.html</id>
+    <content type="html"><![CDATA[
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[php-fpm学习]]></title>
+    <link href="https://artikell.github.io/15629232560831.html"/>
+    <updated>2019-07-12T17:20:56+08:00</updated>
+    <id>https://artikell.github.io/15629232560831.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">前言</h2>
+
+<p>PHP提供了多种SAPI接口，例如 apache2hander、fastcgi、cli等等。当然，php-fpm也是其中一种。相比其他接口，php-fpm运用更加广泛。</p>
+
+<p>PHP-FPM官方的主要特征：</p>
+
+<ul>
+<li>支持平滑停止/启动的高级进程管理功能；</li>
+<li>可以工作于不同的 uid/gid/chroot 环境下，并监听不同的端口和使用不同的 php.ini 配置文件（可取代 safe_mode 的设置）；</li>
+<li>stdout 和 stderr 日志记录;</li>
+<li>在发生意外情况的时候能够重新启动并缓存被破坏的 opcode;</li>
+<li>文件上传优化支持;</li>
+<li>&quot;慢日志&quot; - 记录脚本（不仅记录文件名，还记录 PHP backtrace 信息，可以使用 ptrace或者类似工具读取和分析远程进程的运行数据）运行所导致的异常缓慢;</li>
+<li>fastcgi_finish_request() - 特殊功能：用于在请求完成和刷新数据后，继续在后台执行耗时的工作（录入视频转换、统计处理等）；</li>
+<li>动态／静态子进程产生；</li>
+<li>基本 SAPI 运行状态信息（类似Apache的 mod_status）；</li>
+<li>基于 php.ini 的配置文件。</li>
+</ul>
+
+<h2 id="toc_1">fpm的启动</h2>
+
+<p>php-fpm启动流程主要分为三步：<br/>
+1. 配置和命令行参数解析<br/>
+2. 环境初始化<br/>
+3. 进程启动并处理请求</p>
+
+<h2 id="toc_2">核心模块初始化</h2>
+
+<pre><code>    if (0 &gt; fpm_php_init_main()           || // 启动
+        0 &gt; fpm_stdio_init_main()         || // 设置输入和输出
+        0 &gt; fpm_conf_init_main(test_conf, force_daemon) || // 配置初始化
+        0 &gt; fpm_unix_init_main()          ||
+        0 &gt; fpm_scoreboard_init_main()    || // 计分板初始化
+        0 &gt; fpm_pctl_init_main()          || // 控制初始化
+        0 &gt; fpm_env_init_main()           || // 环境初始化
+        0 &gt; fpm_signals_init_main()       || // 信号初始化
+        0 &gt; fpm_children_init_main()      || // 子进程初始化
+        0 &gt; fpm_sockets_init_main()       || // socket初始化
+        0 &gt; fpm_worker_pool_init_main()   || // 工作进程初始化
+        0 &gt; fpm_event_init_main()) { // 事件初始化
+
+        if (fpm_globals.test_successful) {
+            exit(FPM_EXIT_OK);
+        } else {
+            zlog(ZLOG_ERROR, &quot;FPM initialization failed&quot;);
+            return -1;
+        }
+    
+</code></pre>
+
+<ol>
+<li>fpm_php_init_main：初始化cleanup链表</li>
+<li>fpm_stdio_init_main：初始化命令行的输入输出，输出至/dev/null文件</li>
+<li>fpm_conf_init_main：解析配置信息</li>
+<li>fpm_unix_init_main：初始化环境信息，包括内存限制以及僵尸化进程</li>
+<li>fpm_scoreboard_init_main：计分板初始化，用于统计子进程状态</li>
+<li>fpm_pctl_init_main：进程控制初始化，主要是保存可执行文件的路径，用于后续重启进程</li>
+<li>fpm_env_init_main：环境初始化，主要是设置进程标题</li>
+<li>fpm_signals_init_main：信号初始化，初始化信息屏蔽和处理函数</li>
+<li>fpm_children_init_main：子进程初始化，主要是设置<code>emergency_restart_threshold</code>参数</li>
+<li>fpm_sockets_init_main：初始化socket描述符</li>
+<li>fpm_worker_pool_init_main：初始化工作池对象，只是挂着一个清空的函数</li>
+<li>fpm_event_init_main：初始化事件对象，主要是设置最大的事件数</li>
+</ol>
+
+<h2 id="toc_3">进程模型</h2>
+
+<p>进程模型主要是fpm的父子进程的关系控制，这就涉及到了进程间通信的问题。<br/>
+在fpm中，进程间通信主要有2类：信号下发的信号和数据上报的共享内存</p>
+
+<h3 id="toc_4">进程间通信</h3>
+
+<h4 id="toc_5">信号</h4>
+
+<p>信号主要有：<br/>
+1. SIGINT/SIGTERM/SIGQUIT: 退出fpm，在master收到退出信号后将向所有的worker进程发送退出信号，然后master退出<br/>
+2. SIGUSR1: 重新加载日志文件，生产环境中通常会对日志进行切割，切割后会生成一个新的日志文件，如果fpm不重新加载将无法继续写入日志，这个时候就需要向master发送一个USR1的信号<br/>
+3. SIGUSR2: 重启fpm，首先master也是会向所有的worker进程发送退出信号，然后master会调用execvp()重新启动fpm，最后旧的master退出<br/>
+4. SIGCHLD: 这个信号是子进程退出时操作系统发送给父进程的，子进程退出时，内核将子进程置为僵尸状态，这个进程称为僵尸进程，它只保留最小的一些内核数据结构，以便父进程查询子进程的退出状态，只有当父进程调用wait或者waitpid函数查询子进程退出状态后子进程才告终止，fpm中当worker进程因为异常原因(比如coredump了)退出而非master主动杀掉时master将受到此信号，这个时候父进程将调用waitpid()查下子进程的退出，然后检查下是不是需要重新fork新的worker</p>
+
+<p>其中，信号的处理是通过挂载函数sig_handler写入管道，后续由事件模型处理管道在发送信号给子进程，这也成功实现了非阻塞流程。</p>
+
+<h4 id="toc_6">共享内存</h4>
+
+<p>共享内存的实践则是用在计分板功能上。fpm为了获取子进程状态，则为每个子进程开辟一块共享内存区域，子进程自动更新相关数据，而由主进程来获取并进行相关操作。同时计分板还担任了进程数控制的功能，如果在创建子进程时未获取到计分板对象，则无法fork新进程</p>
+
+<p>计分板状态：<br/>
+1. FPM_REQUEST_ACCEPTING 空闲状态(等待请求)<br/>
+2. FPM_REQUEST_READING_HEADERS 读取头信息<br/>
+3. FPM_REQUEST_INFO 获取请求信息<br/>
+4. FPM_REQUEST_EXECUTING 执行状态<br/>
+5. FPM_REQUEST_END 请求结束状态</p>
+
+<p>计分板相关结构体：</p>
+
+<pre><code>struct fpm_scoreboard_proc_s {
+    union {
+        atomic_t lock;
+        char dummy[16];
+    };//锁状态
+    int used; //使用标识 0=未使用 1=正在使用
+    time_t start_epoch; //使用开始时间
+    pid_t pid; //进程id
+    unsigned long requests; //处理请求次数
+    enum fpm_request_stage_e request_stage; //处理请求阶段
+    struct timeval accepted; //accept请求时间
+    struct timeval duration; //脚本总执行时间
+    time_t accepted_epoch;//accept请求时间戳(秒)
+    struct timeval tv; //活跃时间
+    char request_uri[128]; //请求路径
+    char query_string[512]; //请求参数
+    char request_method[16]; //请求方式
+    size_t content_length; //请求内容长度 
+    char script_filename[256];//脚本名称
+    char auth_user[32];
+#ifdef HAVE_TIMES
+    struct tms cpu_accepted;
+    struct timeval cpu_duration;
+    struct tms last_request_cpu;
+    struct timeval last_request_cpu_duration;
+#endif
+    size_t memory;//脚本占用的内存大小
+};
+</code></pre>
+
+<h3 id="toc_7">进程模式</h3>
+
+<p>fpm存在三种不同的进程管理方式：<br/>
+- <strong>static</strong>: 这种方式比较简单，在启动时 master 按照pm.max_children配置 fork 出相应数量的 worker 进程，即 worker 进程数是固定不变的；<br/>
+- <strong>dynamic</strong>: 动态进程管理，首先在 fpm 启动时按照pm.start_servers初始化一定数量的 worker，运行期间如果 master 发现空闲 worker 数低于pm.min_spare_servers配置数（表示请求比较多，worker 处理不过来了）则会 fork worker 进程，但总的 worker 数不能超过pm.max_children，如果 master 发现空闲 worker 数超过了pm.max_spare_servers(表示闲着的 worker 太多了)则会杀掉一些 worker，避免占用过多资源，master 通过这 4 个值来控制 worker 数；<br/>
+- <strong>ondemand</strong>: 这种方式一般很少用，在启动时不分配 worker 进程，等到有请求了后再通知 master 进程 fork worker 进程，总的 worker 数不超过pm.max_children，处理完成后 worker 进程不会立即退出，当空闲时间超过pm.process_idle_timeout后再退出；</p>
+
+<h3 id="toc_8">事件模型</h3>
+
+<p>事件模型主要针对master进程而言，同时需要了解的是，master进程是通过链表和epoll等事件模型来实现自身的事件循环。</p>
+
+<pre><code>void fpm_event_loop(int err)
+{
+    //创建一个io read的监听事件，这里监听的就是在fpm_init()阶段中通过socketpair()创建管道sp[0]
+    //当sp[0]可读时将回调fpm_got_signal()
+    fpm_event_set(&amp;signal_fd_event, fpm_signals_get_fd(), FPM_EV_READ, &amp;fpm_got_signal, NULL);
+    fpm_event_add(&amp;signal_fd_event, 0);
+
+    //如果在php-fpm.conf配置了request_terminate_timeout则启动心跳检查
+    if (fpm_globals.heartbeat &gt; 0) {
+        fpm_pctl_heartbeat(NULL, 0, NULL);
+    }
+    //定时触发进程管理
+    fpm_pctl_perform_idle_server_maintenance_heartbeat(NULL, 0, NULL);
+    
+    //进入事件循环，master进程将阻塞在此
+    while (1) {
+        ...
+        //等待IO事件
+        ret = module-&gt;wait(fpm_event_queue_fd, timeout);
+        ...
+        //检查定时器事件
+        ...
+    }
+}
+</code></pre>
+
+<p>其中主要的3大事件分别是：<br/>
+1. sp[1]管道可读事件<br/>
+2. fpm_pctl_perform_idle_server_maintenance_heartbeat 进程管理事件<br/>
+3. fpm_pctl_heartbeat 超时管理事件</p>
+
+<h2 id="toc_9">相关链接</h2>
+
+<ol>
+<li><a href="https://www.fanhaobai.com/2017/10/internal-php-fpm.html">深入源码剖析PHP-FPM</a></li>
+<li><a href="https://blog.csdn.net/mijar2016/article/details/53414402">PHP源码分析 - PHP-FPM scoreboard模块介绍</a></li>
+</ol>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Redis特征整理学习]]></title>
+    <link href="https://artikell.github.io/15621254404161.html"/>
+    <updated>2019-07-03T11:44:00+08:00</updated>
+    <id>https://artikell.github.io/15621254404161.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">Redis特征</h2>
+
+<p>学习是一个从头开始的过程，于是看看Redis都是怎么发展的。</p>
+
+<h3 id="toc_1">Redis历史升级</h3>
+
+<h4 id="toc_2">Redis2.6</h4>
+
+<p>1）键的过期时间支持毫秒<br/>
+2）从节点提供只读功能<br/>
+3）服务端支持Lua脚本<br/>
+4）放开客户端连接数的硬编码限制<br/>
+5）去掉虚拟内存相关功能等</p>
+
+<h4 id="toc_3">Redis2.8</h4>
+
+<p>1）完善主从复制功能，实现增量复制<br/>
+2）Redis设置明显的进程名，在系统中ps命令即可查看<br/>
+3）发布/订阅添加pub/sub命令<br/>
+4）Redis Sentinel第二版发布，较Redis 2.6更加完善，可以线上使用<br/>
+5）可以通过config set命令设置maxclients等</p>
+
+<h4 id="toc_4">Redis3.0</h4>
+
+<p>1）推出Redis的分布式集群 Redis Cluster<br/>
+2）全新的embedded string对象编码结果，优化小对象的内存访问，在特定的工作负载下能大幅度提升性能<br/>
+3）LRU算法提升<br/>
+4）config set 设置maxmemory的时候可以设置不用的单位<br/>
+5）新的Client pause命令，在指定时间内停止处理客户端请求等</p>
+
+<h4 id="toc_5">Redis3.2</h4>
+
+<p>1）添加GEO功能<br/>
+2）新的List编码类型quicklist<br/>
+3）SDS在速度和节省空间上都做了优化<br/>
+4）Lua脚本功能增强<br/>
+5）新的RDB格式，仍兼容旧版RDB，同时加载速度上也有提升<br/>
+6）Cluster nodes命令加速等</p>
+
+<h4 id="toc_6">Redis4.0</h4>
+
+<p>1）psync2.0，优化了之前版本主从节点切换必然引起全量复制的问题<br/>
+2）提供全新的缓存剔除算法LFU，并对已有算法进行了优化<br/>
+3）提供了非阻塞del和flushall和flushdb功能，有效解决了删除bigkey可能造成的Redis阻塞<br/>
+4）提供了RDB-AOF混合持久化格式<br/>
+5）提供memory命令，实现对内存的更为全面的监控统计<br/>
+6）Redis Cluster 兼容NAT和Docker<br/>
+7）引入Jemalloc库，优化内存访问等等</p>
+
+<h3 id="toc_7">Redis升级亮点</h3>
+
+<ul>
+<li>推出Redis的分布式集群 Redis Cluster</li>
+<li>全新的embedded string对象编码结果，优化小对象的内存访问，在特定的工作负载下能大幅度提升性能</li>
+<li>LRU算法提升</li>
+<li>新的List编码类型quicklist</li>
+<li>psync2.0，优化了之前版本主从节点切换必然引起全量复制的问题</li>
+<li>提供全新的缓存剔除算法LFU，并对已有算法进行了优化</li>
+<li>新的RDB格式，仍兼容旧版RDB，同时加载速度上也有提升</li>
+<li>Redis Cluster 兼容NAT和Docker</li>
+<li>提供了RDB-AOF混合持久化格式</li>
+</ul>
+
+<h2 id="toc_8">基础结构</h2>
+
+<p>从底层往上层整理相关疑问点，这样可以具体理清楚细节。</p>
+
+<h3 id="toc_9">基础类型</h3>
+
+<p>Redis 五大数据类型是：</p>
+
+<ul>
+<li><strong>string（字符串）</strong>是 redis 最基本的类型，一个 key 对应一 个 value 。string 类型是二进制安全的。意思是 redis 的 string 可以包含任何数据。比如 jpg 图片或者序列化的对象 。它也是 redis 最基本的数据类型，一个 redis 中字符串 value 最多可以是512M。</li>
+<li><strong>hash（哈希）</strong>是一个键值对集合，是一个 string 类型的 field 和 value 的映射表，hash特别适合用于存储对象。类似Java里面的Map<String,Object>。</li>
+<li><strong>list（列表）</strong>是简单的字符串列表，按照插入顺序排序。你可以添加一个元素导列表的头部（左边）或者尾部（右边）。它的底层实际是个链表。</li>
+<li><strong>set（集合）</strong>是string类型的无序集合。它是通过HashTable实现实现的。</li>
+<li>**zset(sorted set：有序集合) **set 一样也是string类型元素的集合,且不允许重复的成员。不同的是每个元素都会关联一个double类型的分数。redis正是通过分数来为集合中的成员进行从小到大的排序。zset的成员是唯一的,但分数(score)却可以重复。</li>
+</ul>
+
+<h3 id="toc_10">对象类型</h3>
+
+<p>针对每个对象，有一个类型和一个编码字段，并还有引用和数据指针：</p>
+
+<pre><code>typedef struct redisObject {
+    unsigned type:4;
+    unsigned encoding:4;
+    unsigned lru:REDIS_LRU_BITS; /* lru time (relative to server.lruclock) */
+    int refcount;
+    void *ptr;
+} robj;
+</code></pre>
+
+<p><img src="media/15621254404161/15621274941958.jpg" alt="存储结构对应图"/></p>
+
+<h2 id="toc_11">命令处理流程</h2>
+
+<h3 id="toc_12">Redis协议</h3>
+
+<p>客户端发送命令的格式(类型)：<br/>
+间隔符号，在Linux下是\r\n，在Windows下是\n</p>
+
+<ol>
+<li><p>简单字符串 Simple Strings, 以 &quot;+&quot;加号 开头<br/>
+格式：+ 字符串 \r\n<br/>
+字符串不能包含 CR或者 LF(不允许换行)<br/>
+<code><br/>
+eg: &quot;+OK\r\n&quot;<br/>
+</code></p>
+
+<blockquote>
+<p>注意：为了发送二进制安全的字符串，一般推荐使用后面的 Bulk Strings类型</p>
+</blockquote></li>
+<li><p>错误 Errors, 以&quot;-&quot;减号 开头<br/>
+格式：- 错误前缀 错误信息 \r\n<br/>
+错误信息不能包含 CR或者 LF(不允许换行)，Errors与Simple Strings很相似，不同的是Erros会被当作异常来看待<br/>
+<code><br/>
+eg: &quot;-Error unknow command &#39;foobar&#39;\r\n&quot;<br/>
+</code></p></li>
+<li><p>整数型 Integer， 以 &quot;:&quot; 冒号开头<br/>
+格式：: 数字 \r\n<br/>
+<code><br/>
+eg: &quot;:1000\r\n&quot;<br/>
+</code></p></li>
+<li><p>大字符串类型 Bulk Strings, 以 &quot;\(&quot;美元符号开头，长度限制512M<br/>
+格式：\) 字符串的长度 \r\n 字符串 \r\n<br/>
+字符串不能包含 CR或者 LF(不允许换行);<br/>
+eg: <br/>
+<code><br/>
+&quot;$6\r\nfoobar\r\n&quot;    其中字符串为 foobar，而6就是foobar的字符长度<br/>
+&quot;$0\r\n\r\n&quot;       空字符串<br/>
+&quot;$-1\r\n&quot;           null<br/>
+</code></p></li>
+<li><p>数组类型 Arrays，以 &quot;*&quot;星号开头<br/>
+格式：* 数组元素个数 \r\n 其他所有类型 (结尾不需要\r\n)<br/>
+eg: <br/>
+<code><br/>
+&quot;*0\r\n&quot;      空数组<br/>
+&quot;*2\r\n$2\r\nfoo\r\n$3\r\nbar\r\n&quot;      数组包含2个元素，分别是字符串foo和bar<br/>
+&quot;*3\r\n:1\r\n:2\r\n:3\r\n&quot;       数组包含3个整数：1、2、3<br/>
+&quot;*5\r\n:1\r\n:2\r\n:3\r\n:4\r\n$6\r\nfoobar\r\n&quot;  包含混合类型的数组<br/>
+&quot;*-1\r\n&quot;         Null数组<br/>
+</code></p>
+
+<blockquote>
+<p>注意：只有元素个数后面的\r\n是属于该数组的，结尾的\r\n一般是元素的</p>
+</blockquote></li>
+</ol>
+
+<h2 id="toc_13">事件处理</h2>
+
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[系统调用探真]]></title>
@@ -90,13 +536,13 @@
 
 <ol>
 <li><strong>物理地址(physical address)：</strong>用于内存芯片级的单元寻址，与处理器和CPU连接的地址总线相对应。</li>
-<li><strong>逻辑地址(logical address)：</strong>是指由程序产生的与段相关的偏移地址部分。例如，你在进行C语言指针编程中，可以读取指针变量本身值(&amp;操作)，实际上这个值就是逻辑地址，它是相对于你当前进程数据段的地址，不和绝对物理地址相干。</li>
 <li><strong>线性地址(linear address)</strong>：跟逻辑地址类似，它也是一个不真实的地址，如果逻辑地址是对应的硬件平台段式管理转换前地址的话，那么线性地址则对应了硬件页式内存的转换前地址。</li>
+<li><strong>逻辑地址(logical address)：</strong>是指由程序产生的与段相关的偏移地址部分。例如，你在进行C语言指针编程中，可以读取指针变量本身值(&amp;操作)，实际上这个值就是逻辑地址，它是相对于你当前进程数据段的地址，不和绝对物理地址相干。</li>
 </ol>
 
 <p><img src="media/15619022452968/15619060395681.jpg" alt="三种地址转换流程"/></p>
 
-<p>其实分页可以解决虚拟地址到物理地址的转换工作：只要虚拟地址前置支持索引并查询页表即可。但有个问题在于，一个程序中的地址在编译时已经固定，而页表中的索引在不断变化，在不同时间启动，对应的索引可能就会不一致。<br/>
+<p>其实分页可以解决逻辑地址到物理地址的转换工作：只要逻辑地址前置支持索引并查询页表即可。但有个问题在于，一个程序中的地址在编译时已经固定，而页表中的索引在不断变化，在不同时间启动，对应的索引可能就会不一致。<br/>
 于是，系统做了一次隔离，通过段描述符来将固定的虚拟地址映射到动态的段基地址中，后续再通过页表来找到对应的物理地址，页表的功能也避免的<em>碎片化</em>的产生，因为如果只存在段表的话，扩缩容是一个很头疼的问题。</p>
 
 <h5 id="toc_10">GDT和LDT</h5>
@@ -185,7 +631,47 @@
 <li><a href="http://blog.sina.com.cn/s/blog_6b94d5680101va6e.html">Linux内核源代码情景分析---第三章 中断、异常和系统调用 </a></li>
 <li><a href="https://blog.csdn.net/bfboys/article/details/52420211">总结：特权级之间的转换</a></li>
 <li><a href="https://blog.csdn.net/chen1540524015/article/details/73818689">中断处理特权级转换</a></li>
+<li><a href="https://blog.csdn.net/liuhangtiant/article/details/85227125">谈一谈copy_from_user和copy_to_user</a></li>
+<li>[]</li>
 </ol>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Linux 锁]]></title>
+    <link href="https://artikell.github.io/15616155804503.html"/>
+    <updated>2019-06-27T14:06:20+08:00</updated>
+    <id>https://artikell.github.io/15616155804503.html</id>
+    <content type="html"><![CDATA[
+<h2 id="toc_0">前言</h2>
+
+<p>锁，在系统中，有那么多，可是没看到有一个整体介绍的问题，没有的话，我咋和妹子愉快的交流。</p>
+
+<h2 id="toc_1">锁的类型</h2>
+
+<p>遵循互联网三大原则：是什么、为什么、怎么做，我们来锁看看是什么。</p>
+
+<h3 id="toc_2">互斥量(mutex)</h3>
+
+<p>锁操作主要包括加锁<em>pthread_mutex_lock()</em>、解锁<em>pthread_mutex_unlock()</em>和测试加锁 <em>pthread_mutex_trylock()</em>三个，不论哪种类型的锁，都不可能被两个不同的线程同时得到，而必须等待解锁。</p>
+
+<p><em>pthread_mutex_trylock()</em>语义与<em>pthread_mutex_lock()</em>类似，不同的是在锁已经被占据时返回<em>EBUSY</em>而不是挂起等待。</p>
+
+<ol>
+<li>读写锁(rwlock)</li>
+<li>条件变量(cond)</li>
+<li>信号量(sem)</li>
+<li>自旋锁(spin_lock)</li>
+<li>文件互斥</li>
+<li>原子操作(atomic)</li>
+</ol>
+
+<h2 id="toc_3">相关链接</h2>
+
+<ul>
+<li><a href="http://mingxinglai.com/cn/2013/06/mutil-threads/#1">http://mingxinglai.com/cn/2013/06/mutil-threads/#1</a></li>
+</ul>
 
 ]]></content>
   </entry>
@@ -1042,858 +1528,6 @@ go1.11 有 2个子版本 (2018-08)</p>
 <a href="Go%201.9.2%20%E7%9A%84%20bug">http://way.xiaojukeji.com/article/10750</a><br/>
 <a href="1.8%E7%9A%84%E6%94%B9%E5%8A%A8">https://studygolang.com/articles/9298</a><br/>
 <a href="Go%201.10%E4%B8%AD%E5%80%BC%E5%BE%97%E5%85%B3%E6%B3%A8%E7%9A%84%E5%87%A0%E4%B8%AA%E5%8F%98%E5%8C%96">http://ju.outofmemory.cn/entry/344575</a></p>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[总结docker搭建服务过程]]></title>
-    <link href="https://artikell.github.io/15390880867263.html"/>
-    <updated>2018-10-09T20:28:06+08:00</updated>
-    <id>https://artikell.github.io/15390880867263.html</id>
-    <content type="html"><![CDATA[
-<h2 id="toc_0">搭建步骤</h2>
-
-<ol>
-<li><p>安装docker服务</p>
-
-<p>下载地址：<a href="https://docs.docker.com/docker-for-mac/install/#download-docker-for-mac">https://docs.docker.com/docker-for-mac/install/#download-docker-for-mac</a></p>
-
-<p>下载Stable channel版本，作为一个稳定版本，之后根据文档进行docker服务的安装。</p></li>
-<li><p>启动后，运行命令<code>docker pull ubuntu</code>，拉取<code>ubuntu</code>镜像。</p></li>
-<li><p>新建一个容器服务，并得到容器编号：</p>
-
-<pre><code>$ docker run --privileged=true -t -i -d ubuntu /bin/bash
-</code></pre></li>
-<li><p>运行<code>docker ps</code>查看容器列表</p></li>
-<li><p>运行<code>docker exec -it 83f7b8757c17 /bin/bash</code>命令，进入相关容器</p></li>
-<li><p>安装ssh相关服务：</p>
-
-<pre><code>$ sudo apt install openssh-server
-$ sudo apt install openssh-client
-</code></pre></li>
-<li><p>修改ssh相关配置：</p>
-
-<pre><code>$ vi /etc/ssh/sshd_config
-
-RSAAuthentication yes #启用 RSA 认证
-PubkeyAuthentication yes #启用公钥私钥配对认证方式
-AuthorizedKeysFile .ssh/authorized_keys #公钥文件路径（和上面生成的文件同）
-PermitRootLogin yes #root能使用ssh登录
-</code></pre></li>
-<li><p>运行命令<code>passwd</code>修改root账号密码</p></li>
-<li><p>重启ssh服务并设置为开机自启：</p>
-
-<pre><code>$ service sshd restart
-$ chkconfig sshd on
-</code></pre></li>
-<li><p>退出容器，并提交成镜像文件</p>
-
-<pre><code>$ sudo docker commit [container id] skyfire/ssh
-</code></pre></li>
-<li><p>生成一个新的docker容器，并映射端口</p>
-
-<pre><code>docker run -t -i -d -p 10022:22 skyfire/ssh /bin/bash
-</code></pre></li>
-<li><p>利用ssh连接容器服务</p>
-
-<pre><code>$ ssh root@localhost -p 10022
-</code></pre></li>
-</ol>
-
-<h2 id="toc_1">相关问题</h2>
-
-<ol>
-<li><code>docker</code>容器如何保证后台运行？</li>
-<li><code>docker</code>能否不生成镜像而直接映射端口？</li>
-</ol>
-
-<h2 id="toc_2">相关链接</h2>
-
-<ol>
-<li><a href="http://blog.csdn.net/qq626387/article/details/50506636">Docker入门实战-SSH连接docker容器</a></li>
-<li><a href="https://segmentfault.com/a/1190000002567459">Docker学习之路（六）用commit命令创建镜像</a></li>
-<li><a href="http://blog.sina.com.cn/s/blog_3dd53f260102uyj0.html">ssh问题：ssh_exchange_identification</a></li>
-<li><a href="http://blog.csdn.net/qq_29994609/article/details/51730640">Docker学习笔记-Docker端口映射</a></li>
-<li><a href="http://blog.csdn.net/minicto/article/details/63684583">ubuntu中ssh-server的安装与开机启动</a></li>
-</ol>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[Redis 主流程学习]]></title>
-    <link href="https://artikell.github.io/15345862239174.html"/>
-    <updated>2018-08-18T17:57:03+08:00</updated>
-    <id>https://artikell.github.io/15345862239174.html</id>
-    <content type="html"><![CDATA[
-<h2 id="toc_0">前言</h2>
-
-<p>本文主要介绍Redis主流程的过程，包括<em>启动初始化，事件，命令处理，异常处理</em>4大块，尽可能覆盖全面。</p>
-
-<h2 id="toc_1">启动初始化</h2>
-
-<p>启动初始化一般都有3个流程：<em>环境设置、配置解析、模块初始化</em>。三者主要是为了后续持续的运行做准备。</p>
-
-<h3 id="toc_2">环境设置</h3>
-
-<p>环境设置大部分都是一些与系统相关的设置，例如不同的系统会使用不同的事件模型</p>
-
-<table>
-<thead>
-<tr>
-<th>事件模型</th>
-<th>系统</th>
-</tr>
-</thead>
-
-<tbody>
-<tr>
-<td>Evport</td>
-<td>sun系统</td>
-</tr>
-<tr>
-<td>Epoll</td>
-<td>linux系统</td>
-</tr>
-<tr>
-<td>Kqueue</td>
-<td>unix系统</td>
-</tr>
-<tr>
-<td>Select</td>
-<td>兜底</td>
-</tr>
-</tbody>
-</table>
-
-<p>对于四种模型，select是最简单的，也是性能较差的一个，所以是用于兜底方案，而关于epoll和kqueue都是主动触发的事件模型。2者其实是用于解决C10K问题而从select中衍生出来的模型，同时是分别针对linux系统和Unix系统设计。</p>
-
-<pre><code>#ifdef HAVE_EVPORT
-#include &quot;ae_evport.c&quot;
-#else
-    #ifdef HAVE_EPOLL
-    #include &quot;ae_epoll.c&quot;
-    #else
-        #ifdef HAVE_KQUEUE
-        #include &quot;ae_kqueue.c&quot;
-        #else
-        #include &quot;ae_select.c&quot;
-        #endif
-    #endif
-#endif
-</code></pre>
-
-<p>同时还有类似内存池的选择，是zmalloc,还是jmalloc，都是在编译时候设置好。</p>
-
-<p>在启动的时候，能做的事情不多，主要就是：语言环境、标题、随机种子、监督。</p>
-
-<h3 id="toc_3">配置解析</h3>
-
-<p>配置主要都是从命令行参数列表中获取，而针对一下特殊的参数例如<em>version、help、test-memory</em>就有特殊处理。</p>
-
-<pre><code>if (strcmp(argv[1], &quot;-v&quot;) == 0 ||
-    strcmp(argv[1], &quot;--version&quot;) == 0) version();
-if (strcmp(argv[1], &quot;--help&quot;) == 0 ||
-    strcmp(argv[1], &quot;-h&quot;) == 0) usage();
-if (strcmp(argv[1], &quot;--test-memory&quot;) == 0) {
-    if (argc == 3) {
-        memtest(atoi(argv[2]),50);
-        exit(0);
-    } else {
-        fprintf(stderr,&quot;Please specify the amount of memory to test in megabytes.\n&quot;);
-        fprintf(stderr,&quot;Example: ./redis-server --test-memory 4096\n\n&quot;);
-        exit(1);
-    }
-}
-</code></pre>
-
-<p>配置检查第一个参数，如果不是以双减号开头，则作为配置文件，同时会补全configfile为绝对路径，这样的话，后续debug模式下重启服务可以正常启动。</p>
-
-<pre><code>if (argv[j][0] != &#39;-&#39; || argv[j][1] != &#39;-&#39;) {
-    configfile = argv[j];
-    server.configfile = getAbsolutePath(configfile);
-    /* Replace the config file in server.exec_argv with
-     * its absoulte path. */
-    zfree(server.exec_argv[j]);
-    server.exec_argv[j] = zstrdup(server.configfile);
-    j++;
-}
-</code></pre>
-
-<p>后续的配置设置，都是以<code>--</code>开头，例如：<code>--port 6379</code>，都作为配置信息。<br/>
-例如： <code>redis-server --port 6379 --save 900 1 --save 300 1</code> ，会被解析为：</p>
-
-<pre><code>port 6379
-save 900 1
-save 300 1
-</code></pre>
-
-<p>这样的好处就是可以和配置文件复用同一套的解析方法。</p>
-
-<p>其中有个有趣的模式是支持从输入流中获取配置信息，开启方法则是在配置文件的时候输入一个减号，例如：<code>redis-server -</code>，后续通过<code>ctrl+c</code>退出模式。当然，格式将和配置文件是相同。</p>
-
-<p>后续的配置解析是将整个配置信息通过<code>\n\t\r</code>，进行分隔成多行，并针对每一行的第一个元素小写，找到相应的变量设置。若设置错误，则直接会报错并退出进程。</p>
-
-<h3 id="toc_4">模块初始化</h3>
-
-<p>初始化流程中，大部分模块都进行了初始化处理，例如：bio，lua，模块module，cluster，信号，慢日志等。</p>
-
-<p>初始化的时候，主要功能都是在做对象内存的申请，端口的监听。其中当然包括多个数据库的申请，以及持久化数据的导入。</p>
-
-<h2 id="toc_5">事件</h2>
-
-<p>Redis事件分为2类：<em>时间事件和文件事件</em>，事件可以和Nginx的事件模型对齐，文件事件和定时事件交替执行。而和Nginx不一样的是，Redis对时间要求比Nginx严格，所以Redis会搜索最近的一个时间事件，并计算文件事件获取的超时时间。</p>
-
-<h3 id="toc_6">时间事件</h3>
-
-<p>在Redis中，时间事件记录就是通过链条来记录：</p>
-
-<pre><code>typedef struct aeTimeEvent {
-    long long id; /* time event identifier. */
-    long when_sec; /* seconds */
-    long when_ms; /* milliseconds */
-    aeTimeProc *timeProc;
-    aeEventFinalizerProc *finalizerProc;
-    void *clientData;
-    struct aeTimeEvent *next;
-} aeTimeEvent;
-</code></pre>
-
-<p>所以，每次找最近的时间事件，都是直接遍历来获取。<br/>
-从整个的Redis源码中，只有一个地方使用到了时间事件，那就是ServerCron方法，</p>
-
-<pre><code>aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL)
-</code></pre>
-
-<p>这个方法主要用于维护Redis服务器的日常，可以看见的是，该方法是1ms执行一次，所以，所有的文件事件间隔不会大于1ms，这也是为啥Redis高效的原因。</p>
-
-<h4 id="toc_7">ServerCron 函数</h4>
-
-<p>作为主要的定时函数，ServerCron函数功能主要用于维护整个Redis的稳定。常见的操作有：数据库的重哈希、数据持久化、内存清理、删除超时客户端等。</p>
-
-<p>与此同时，ServerCron函数也会调用其他的定时函数，例如：ClientCron、DatabaseCron函数，这些原本都是在ServerCron函数中，后来为了便于维护，所以，移出去了。</p>
-
-<p>与ServerCron函数有关系的配置就是hz配置，官方解释是：<code>Time interrupt calls/sec</code>，默认是10，也就是说，默认是每100ms执行一次。</p>
-
-<p><em>那如果对于有些定时任务需要1s执行一次，怎么实现？</em>有2种办法，一是新建一个定时任务来做这个操作，二是在ServerCron中来做调用这个函数。</p>
-
-<p>而在类似ClientCron函数，Redis就采用的是第二种方法，其中会设置cronloops方法来记录当前是第几次循环，并判断是否需要调用：</p>
-
-<pre><code>#define run_with_period(_ms_) if ((_ms_ &lt;= 1000/server.hz) || !(server.cronloops%((_ms_)/(1000/server.hz))))
-</code></pre>
-
-<p>这个宏类似于条件判断，每ms时间执行一次后续的操作。如:</p>
-
-<pre><code>run_with_period(100) trackOperationsPerSecond();
-</code></pre>
-
-<p>每百微秒，执行一次跟踪操作函数，记录这段时间的命令执行情况</p>
-
-<h3 id="toc_8">文件事件</h3>
-
-<p>对于文件事件，是整个Redis异步处理的关键，在各个模块，例如AOF，集群，脚本等模块都需要文件事件来支撑。不过和时间事件不同，文件事件是根据不同的模型实现的，其中包含：select\epoll\evport\kqueue四种模型，每个模型都抽象出了7个方法：<br/>
-1. aeApiCreate - 创建事件对象，类似初始化<br/>
-2. aeApiResize - 重置事件对象<br/>
-3. aeApiFree - 删除事件对象<br/>
-4. aeApiAddEvent - 添加事件<br/>
-5. aeApiDelEvent - 删除事件<br/>
-6. aeApiPoll - 获取事件列表<br/>
-7. aeApiName - 获取事件名称</p>
-
-<!-- 而四个文件模型各自的优缺点如下： -->
-
-<p>在端口监听的时候，使用到了文件模型来处理socket信息：</p>
-
-<pre><code>(aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE, acceptTcpHandler,NULL)
-</code></pre>
-
-<h3 id="toc_9">循环前置</h3>
-
-<p>对于一些需要频繁的操作，需要有一个地方来执行，如果使用时间模型来做的话，那容易导致间隔过长，于是在Redis的事件模型中，存在beforeSleep函数，在每次执行事件的时候，会先调用该函数，主要功能一般都是用于清理无用数据以及持久化数据落盘等简单动作。</p>
-
-<h2 id="toc_10">命令处理</h2>
-
-<p>命令处理可以划分3个部分：<em>连接建立、请求处理、返回数据</em>。</p>
-
-<h3 id="toc_11">接收请求</h3>
-
-<p>连接的建立在文件事件里面已经有提过，就是通过将socke绑定在文件事件中执行。</p>
-
-<p>在建立连接的时候，redis都会循环1000次，尽可能多的接收请求。</p>
-
-<p>获得了socket后，redis会创建客户端对象，其中需要检查2个事情：是否超过最大连接数、是否是无密码远程登录。对应配置为：<code>maxclients</code>和<code>protected-mode</code>。</p>
-
-<p>后续再建立client的时候，会将socket设置为noblock和TcpNoDelay模式，加快数据的传输，同时还会设置keepalive模式。</p>
-
-<p>请求处理的时候，在接收请求，redis进行了协议的处理，redis每次会申请16k的大小来获取数据，同时根据是否知道长度来调整缓存区<br/>
-同时，redis后续会根据，是否成功，或缓存数据是否过多来中的客户端请求<br/>
-之后，会根据是否为master来做一些广播的处理</p>
-
-<h3 id="toc_12">请求处理</h3>
-
-<p>当获取到请求的时候，redis会解析请求的第一个参数，找到相应的命令对象</p>
-
-<pre><code>struct redisCommand redisCommandTable[] = {
-    {&quot;module&quot;,moduleCommand,-2,&quot;as&quot;,0,NULL,1,1,1,0,0},
-    {&quot;get&quot;,getCommand,2,&quot;rF&quot;,0,NULL,1,1,1,0,0},
-    {&quot;set&quot;,setCommand,-3,&quot;wm&quot;,0,NULL,1,1,1,0,0},
-</code></pre>
-
-<p>以get命令来看，命令列表其实是通过一个枚举的过程来做的，到最后会变成一个字典，所以查询的效率很高。</p>
-
-<p>在执行的过程中，命令需要做一系列的检查，包括各种情况：</p>
-
-<ol>
-<li>命令不存在</li>
-<li>命令不合法</li>
-<li>需要登录，却不是auth命令</li>
-<li>若命令对内存严格要求，且服务器无内存</li>
-<li>如果磁盘上存在问题，请不要接受写命令</li>
-<li>如果不满足最低正常从服务器要求，不接受写操作</li>
-<li>如果只是一个只读的从服务器，不接受写操作</li>
-<li>在订阅模式下，只允许一部分命令</li>
-<li>当连接断开时，是否接受请求</li>
-<li>若正在加载，接受一部分请求</li>
-<li>如果lua命令太慢，则只允许一部分请求</li>
-<li>如果是事务命令，则加入事务列表</li>
-<li>否则就执行</li>
-</ol>
-
-<h4 id="toc_13">事务操作</h4>
-
-<p>对于事务类操作，有 MULTI、DISCARD、EXEC和WATCH四个命令。而参考mysql中的事务，有begin、rollback、commit三个命令。多了一个命令，而其实原理上已经完全不一样。<br/>
-对于事务的实现，数据结构如下：</p>
-
-<pre><code>typedef struct multiCmd {
-    robj **argv;
-    int argc;
-    struct redisCommand *cmd;
-} multiCmd;
-
-typedef struct multiState {
-    multiCmd *commands;     /* 事务命令数组 */
-    int count;              /* 命令个数 */
-    int minreplicas;        /* MINREPLICAS for synchronous replication */
-    time_t minreplicas_timeout; /* MINREPLICAS timeout as unixtime. */
-} multiState;
-</code></pre>
-
-<p>其中，主要是commands属性用于存储事务的命令列表，以及一些参数。</p>
-
-<p>首先，watch命令是一个有趣的命令，它会监听一些数据是否变化，首先，对于每个数据库和每个客户端对象，都会有一个<code>watched_keys</code>属性：对于客户端对象而言，<code>watched_keys</code>是一个list列表，主要用于记录当前监听的键，而对于数据库对象而言，<code>watched_keys</code>则是一个以<code>watch</code>的变量名键的字典，用于记录当前键被监听的客户端列表。</p>
-
-<p>如果每次数据库中有变化，其中包括列表排序、过期清空等操作，都会将相关的客户端状态置为<code>CLIENT_DIRTY_CAS</code>状态</p>
-
-<p>MULTI命令和DISCARD命令则相对比较简单，前者只需要将客户端属性设置为事务态，而后者则相反，移除客户端的事务态标记，同时清空命令数组等。</p>
-
-<p>而对于EXEC命令，则是极其复杂的，因为它需要检查异常情况，同时运行命令：</p>
-
-<ol>
-<li>检查客户端是否在事务态</li>
-<li>检查命令是否正常以及键是否被改变</li>
-<li>取消所有监听的键</li>
-<li>广播事务命令</li>
-<li>循环执行所有命令，并返回</li>
-</ol>
-
-<p>回顾一下事务的4个条件（ACID）：原子性（Atomicity，或称不可分割性）、一致性（Consistency）、隔离性（Isolation，又称独立性）、持久性（Durability）。</p>
-
-<p>Redis对于原子性是没有特别严格的保证，正常运行时，操作失败的时候，可能是语法错误或者错误的数据库类型操作，这种操作一般都可以避免。<br/>
-由于Redis单线程来保证，由于命令只能串行运行，所以，隔离性和一致性，Redis完全没问题。<br/>
-而关于持久性，Redis通过AOF和快照2中模式来实现，不过，并不是完全能持久化。</p>
-
-<p>所以，对于Redis事务而言，实现了隔离性和一致性，但无法保证原子性和持久性</p>
-
-<blockquote>
-<p>待补充，事务中的异常处理以及广播</p>
-</blockquote>
-
-<h4 id="toc_14">阻塞操作</h4>
-
-<p>阻塞命令在Redis中，其中是比较关键的一系列命令，很多工具都是通过它来实现，例如消息队列等。而核心命令则是：blpop和brpop。</p>
-
-<p>关于阻塞，本身和事务的watch命令类似，在数据库对象中都存在一个<code>blocking_keys</code>字典，它的键为相关的键名，值则是客户端对象列表。</p>
-
-<p>而在客户端对象这边是存在一个bpop属性，结构体如下：</p>
-
-<pre><code>typedef struct blockingState {
-    /* Generic fields. */
-    mstime_t timeout;       /* Blocking operation timeout. If UNIX current time
-                             * is &gt; timeout then the operation timed out. */
-
-    /* BLOCKED_LIST */
-    dict *keys;             /* The keys we are waiting to terminate a blocking
-                             * operation such as BLPOP. Otherwise NULL. */
-    robj *target;           /* The key that should receive the element,
-                             * for BRPOPLPUSH. */
-
-    /* BLOCKED_WAIT */
-    int numreplicas;        /* Number of replicas we are waiting for ACK. */
-    long long reploffset;   /* Replication offset to reach. */
-
-    /* BLOCKED_MODULE */
-    void *module_blocked_handle; /* RedisModuleBlockedClient structure.
-                                    which is opaque for the Redis core, only
-                                    handled in module.c. */
-} blockingState;
-</code></pre>
-
-<p>其中需要关注的主要是keys、timeout、target三个属性，其中keys主要用于记录阻塞的列表名称，timeout则用于表示阻塞超时时间，target则用于特殊命令<code>BRPOPLPUSH</code>来标记转移的列表对象。</p>
-
-<p>对于已阻塞的客户端而言，其实只有在增加键的时候才会结束阻塞，所以，每个新增列表的时候，都会将列表名加入<code>ready_keys</code>列表中，但命令执行的时候，会检查该列表是否为空，若不为空，则代表有新的列表变动，所以需要修改阻塞状态。</p>
-
-<h4 id="toc_15">订阅操作</h4>
-
-<p>对于订阅功能，其实包含的命令只有 PUBLISH、SUBSCRIBE 2个命令。一个用于订阅管道，一个用于推送消息。其中的中间键叫channel。这与阻塞操作不同的在于，订阅发布是一个1对n的模型，而pop操作是一个1对1的模型。这其中的难度就在于发布给多个客户端以及模式订阅的功能。</p>
-
-<h2 id="toc_16">相关链接</h2>
-
-<ul>
-<li><a href="https://blog.csdn.net/guodongxiaren/article/details/44747719">https://blog.csdn.net/guodongxiaren/article/details/44747719</a></li>
-<li><a href="http://www.spongeliu.com/415.html">http://www.spongeliu.com/415.html</a></li>
-<li><a href="https://github.com/huangz1990/blog/blob/master/diary/2013/how-redis-fix-invalid-aof-file.rst">https://github.com/huangz1990/blog/blob/master/diary/2013/how-redis-fix-invalid-aof-file.rst</a></li>
-<li><a href="https://www.cnblogs.com/frank-yxs/p/5925838.html">https://www.cnblogs.com/frank-yxs/p/5925838.html</a></li>
-<li><a href="https://people.eecs.berkeley.edu/%7Esangjin/2012/12/21/epoll-vs-kqueue.html">https://people.eecs.berkeley.edu/~sangjin/2012/12/21/epoll-vs-kqueue.html</a></li>
-<li><a href="https://www.cnblogs.com/moonz-wu/p/4740908.html">https://www.cnblogs.com/moonz-wu/p/4740908.html</a></li>
-</ul>
-
-<h2 id="toc_17">总结</h2>
-
-<p>贼累，准备做PPT，思考怎么写</p>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[Redis 集群管理学习]]></title>
-    <link href="https://artikell.github.io/15319770094977.html"/>
-    <updated>2018-07-19T13:10:09+08:00</updated>
-    <id>https://artikell.github.io/15319770094977.html</id>
-    <content type="html"><![CDATA[
-<h2 id="toc_0">前言</h2>
-
-<p>Redis集群管理包括哨兵模式、分片、以及主从同步3大块。外部扩展包括codis以及kedis2个项目，顺带zookeeper的集群解决方案。<br/>
-本文主要从主从和分片模块收集并解析。</p>
-
-<span id="more"></span><!-- more -->
-
-<h2 id="toc_1">集群来源</h2>
-
-<p>在Redis分布式的设计中，总共出现了3个模式：主从模式、哨兵模式、集群模式。主从是最基础的实现了读写分离功能，哨兵则是通过分布式集群进行故障的检查与转移，提高了整个分布式系统的高可用性，集群模式则是集大成者，提供了数据分片，以及故障转移的一系列功能。</p>
-
-<p>在集群模式下，redis选用了p2p模式进行系统的构建，这个的优点是保证系统的性能能达到最大，避免中间出现proxy系统来管理，同时保证最终一致性。为此专门设计了一套系统消息系统用来进行信息同步，避免干扰了原有的命令协议。</p>
-
-<p>后续，我们将会一一描述系统的各个功能。</p>
-
-<h2 id="toc_2">关于分布式系统</h2>
-
-<p>对于分布式系统的数据一致性协议，包含很多种：<br/>
-1. 两阶段提交协议<br/>
-2. 三阶段提交协议<br/>
-3. TCC协议<br/>
-4. Paxos协议<br/>
-5. ZAB协议<br/>
-6. Raft协议<br/>
-7. Quorum协议<br/>
-8. Gossip协议</p>
-
-<p>两阶段提交协议和三阶段提交协议是一种强一致性的协议，需要在集群中选取协调者来协调所有节点同时更新数据，这样会导致效率严重的下降。</p>
-
-<p>而在redis的集群中，节点间的信息同步是通过gossip协议，而选举算法，则是通过raft算法实现。其实2者并没什么冲突，完全可以用在同一个系统中。</p>
-
-<h3 id="toc_3">集群消息</h3>
-
-<p>前文讲了集群模式下，专门设计了一套新的消息协议来进行信息同步，也就是<em>clusterMsg</em>结构体：<br/>
-<code><br/>
-typedef struct {<br/>
-    char sig[4];        /* Signature &quot;RCmb&quot; (Redis Cluster message bus). */<br/>
-    uint32_t totlen;    /* Total length of this message */<br/>
-    uint16_t ver;       /* Protocol version, currently set to 1. */<br/>
-    uint16_t port;      /* TCP base port number. */<br/>
-    uint16_t type;      /* Message type */<br/>
-    uint16_t count;     /* Only used for some kind of messages. */<br/>
-    uint64_t currentEpoch;  /* The epoch accordingly to the sending node. */<br/>
-    uint64_t configEpoch;   /* The config epoch if it&#39;s a master, or the last<br/>
-                               epoch advertised by its master if it is a<br/>
-                               slave. */<br/>
-    uint64_t offset;    /* Master replication offset if node is a master or<br/>
-                           processed replication offset if node is a slave. */<br/>
-    char sender[CLUSTER_NAMELEN]; /* Name of the sender node */<br/>
-    unsigned char myslots[CLUSTER_SLOTS/8];<br/>
-    char slaveof[CLUSTER_NAMELEN];<br/>
-    char myip[NET_IP_STR_LEN];    /* Sender IP, if not all zeroed. */<br/>
-    char notused1[34];  /* 34 bytes reserved for future usage. */<br/>
-    uint16_t cport;      /* Sender TCP cluster bus port */<br/>
-    uint16_t flags;      /* Sender node flags */<br/>
-    unsigned char state; /* Cluster state from the POV of the sender */<br/>
-    unsigned char mflags[3]; /* Message flags: CLUSTERMSG_FLAG[012]_... */<br/>
-    union clusterMsgData data;<br/>
-} clusterMsg;<br/>
-</code></p>
-
-<p>结构体头部主要是传输了一部分当前节点的信息：totlen信息长度，也就是最多32位，ver版本默认是1，port就是当前的节点端口，type表示当前信息的类型，大概有：PING\PONG\MEET\FAIL\UPDATE\PUBLISH几类。<br/>
-Epoch则是代表当前的轮次，currentEpoch表示当前投票的轮次，而configEpoch表示当前信息的版本<br/>
-offset表示当前节点的偏移量是多少。<br/>
-sender表示当前节点的名称，myslots表示当前节点管理的slots。myip表示当前节点的ip信息。<br/>
-<strong>后续几个信息待补充。</strong></p>
-
-<p>对于集群信息，redis每秒会从所有节点中抽取5个节点中的一个节点来发送ping信息，同时针对很长时间没发送过的PING的节点会单独发送ping信息。</p>
-
-<p>meet信息则是在客户端发送过了meet命令，或者在接收到新的节点信息的时候，会尝试去连接。这后续会讲解。</p>
-
-<h3 id="toc_4">关于currentEpoch和configEpoch的区别</h3>
-
-<p>这2个Epoch的区别，其实就是2种分布式协议所需要的信息。<br/>
-currentEpoch表示raft协议中的选举轮次，每次加一，都代表新的投票。而configEpoch则表示当前节点的配置版本，gossip协议同步信息时，会将其带上，若有信息更新，则会选择一个新的epoch作为标识。</p>
-
-<p>问：如果选错节点怎么办？？</p>
-
-<h2 id="toc_5">节点管理</h2>
-
-<h3 id="toc_6">关于MEET加入节点</h3>
-
-<p>构建一个集群，主要是通过meet命令发送ip:port给集群内节点，后续都交由集群节点内部来处理。当然，这个配置也支持从配置文件中获取：</p>
-
-<p>问：配置文件格式是啥？</p>
-
-<p>当接收到了meet请求后，节点会将ip:port新建一个待握手的节点信息。其中会有2个状态，一个是CLUSTER_NODE_HANDSHAKE，一个是CLUSTER_NODE_MEET。<br/>
-握手阶段的结束表示已经获得了对应节点的PING信息，拿到了相关的信息，而MEET阶段的结束只是表示已经建立好了连接并已发送了PING信息，但并没做完验证信息。</p>
-
-<p>当一个节点已经和集群中的某个节点进行握手后，他们2将会通过ping消息将对方发送给其他节点，当其他节点获得到了新的节点信息，则会将其加入列表，并发送meet请求给新节点，这样就达到了分布式系统加入新节点的功能。</p>
-
-<h3 id="toc_7">删除节点</h3>
-
-<p>节点的删除则是通过<code>cluster forget</code>命令来进行的，</p>
-
-<p>听说会广播出去，待查看</p>
-
-<h3 id="toc_8">故障转移</h3>
-
-<p>当某些master出现了异常，等于是未进行回复，则会进入故障标记阶段。</p>
-
-<p>首先，如果集群中某个节点PONG回复过长，会被相关节点标记位fpail，同时会通过gossip协议将状态同步给其他节点。</p>
-
-<p>当slave节点发现当前节点已经被大多数标记为下线时，则会向其他节点发送failover_auth请求选择自己为新的主节点。</p>
-
-<p>每次事件前置后，都会检查是否已经满足条件，若已满足，则会开始进行故障转移的功能。这一步选举就是通过Raft协议进行。</p>
-
-<p>从节点获取到超过半数的选票后，做的事件就比较简单，只是将当前节点设置为master并更新了slot信息，这样，后续的gossip消息同步，就会将数据给传播到各个节点上。</p>
-
-<h3 id="toc_9">手动故障转移</h3>
-
-<p>而，上述都是对于自动的故障转移设计的流程，redis集群本身还支持通过命令<code>CLUSTER  FAILOVER</code>手动的故障转移功能。其中有2中转移模式：<code>FORCE</code>和<code>TAKEOVER</code>。</p>
-
-<p>如果有FORCE选项，则从节点不会与主节点进行交互，主节点也不会阻塞其客户端，而是从节点立即开始故障转移流程：发起选举、统计选票、赢得选举、升级为主节点并更新配置。</p>
-
-<p>如果有TAKEOVER选项，则更加简单粗暴：从节点不再发起选举，而是直接将自己升级为主节点，接手原主节点的槽位，增加自己的configEpoch后更新配置。</p>
-
-<p>因此，使用FORCE和TAKEOVER选项，主节点可以已经下线；而不使用任何选项，只发送”CLUSTER  FAILOVER”命令的话，主节点必须在线。</p>
-
-<h2 id="toc_10">槽管理</h2>
-
-<h3 id="toc_11">设置槽</h3>
-
-<p>槽的设计是根据分布式系统的数据分片设计，整个的cluster支持将16384槽数据分片。</p>
-
-<p>初始化的时候，可以使用<code>cluster addsolots</code>命令来设置节点所标记的slot。当然这个命令也有一定的注意事项：<br/>
-1. 该命令只有当所有指定的slots在接收命令的节点上还没有分配得的情况下生效。节点将 拒绝接纳已经分配到其他节点的slots（包括它自己的）。<br/>
-2. 同一个slot被指定多次的情况下命令会失败。<br/>
-3. 执行这个命令有一个副作用，如果slot作为其中一个参数设置为importing，一旦节点向自己分配该slot（以前未绑定）这个状态将会被清除。</p>
-
-<p>而当所有slots都已经被分配完成后，集群将进入正常服务模式。此时就不能在使用<code>addslots</code>命令来设置<code>slot</code>信息。</p>
-
-<p>新的命令则是通过<code>cluster setslots</code>来设置slots的状态进行槽迁移：<br/>
-1. cluster setslot <slot> importing <source_id><br/>
-2. cluster setslot <slot> migrating <target_id><br/>
-3. cluster getkeysinslot <slot> <count><br/>
-4. migrate <target_id> <target_port> <key_name> 0 <timeout><br/>
-5. cluster setslot <slot> none <source_id><br/>
-6. cluster setslot <slot> none <target_id></p>
-
-<p>关键步骤就是步骤4，此时需要通过脚本来不断的迁移相关的键信息，migrate命令是一个特殊的命令，他是一个迁移键的原子命令，内部是由dump和restore命令组成，每次都利用dump将数据序列号后，在调用目标节点的restore命令传输数据，后续再将数据从本地删除，达到原子的迁移数据功能。但风险就是如果键信息过大，则需要迁移过长时间。这也是无法避免的问题。</p>
-
-<p>在分片的前提下，会产生2个新的错误码：ACK和MOVE。首先介绍MOVE错误码，该错误码主要是针对不在该节点的分片被查询，则会得到一个MOVE信息，并得到正常的节点信息。而对于ACK错误，则是在槽迁移过程中，访问的数据已经被迁移后，节点会返回ACK信息给客户端，使其重定向到新节点。</p>
-
-<p>在数据分片时，常常有不可避免的分片不均的问题，如果某个槽的数据过多，这对于开发人员是无法避免的，而集群模式下，提供了tag的功能，当然也是在对键名进行改造。</p>
-
-<h2 id="toc_12">节点均衡</h2>
-
-<p>在故障转移后，常常会出现从节点不均衡的问题，那么就会触发从节点的均衡，这个功能其实相对简单。<br/>
-在每次循环时，节点会检查自己是否为最大的主节点的从节点，如果是的话，从节点将会检查自己是否为名字最小的那个从节点，若是的，则就将自己的主节点切换。</p>
-
-<h2 id="toc_13">信息处理</h2>
-
-<p>信息处理是一个很重要的部分，cluster里面专门有好几百行来处理信息，其中就包括各种异常情况，后续我们来一一列举。</p>
-
-<h3 id="toc_14">前置处理</h3>
-
-<p>信息的前置处理大概分为2个部分：获取信息长度、更新节点信息。</p>
-
-<p>首先由于这是一个新的信息格式，所以cluster中会先解析出信息的总长度，这和所有二进制协议是一样的。</p>
-
-<p>之后，节点会查看新的连接是否已经是正常节点（存在且非握手状态），是的话，则修改选举轮次，偏移量等。</p>
-
-<p>特殊逻辑是在手动故障转移的同时，收到了master请求的时候，同时还会记录下master当前的偏移量。</p>
-
-<h3 id="toc_15">PING/PONG/MEET</h3>
-
-<h2 id="toc_16">结语</h2>
-
-<p>集群分析还没解析完成。</p>
-
-<h2 id="toc_17">相关链接</h2>
-
-<ul>
-<li><a href="%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%EF%BC%8C%E4%B8%A4%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4%E5%8D%8F%E8%AE%AE%EF%BC%8C%E4%B8%89%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4%E5%8D%8F%E8%AE%AE">https://www.cnblogs.com/balfish/p/8658691.html</a></li>
-<li><a href="%E5%88%86%E5%B8%83%E5%BC%8F%E7%B3%BB%E7%BB%9F%E7%90%86%E8%AE%BA%E4%B9%8BQuorum%E6%9C%BA%E5%88%B6">https://www.cnblogs.com/hapjin/p/5626889.html</a></li>
-</ul>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[Redis 耗时记录模块]]></title>
-    <link href="https://artikell.github.io/15304380579995.html"/>
-    <updated>2018-07-01T17:40:57+08:00</updated>
-    <id>https://artikell.github.io/15304380579995.html</id>
-    <content type="html"><![CDATA[
-<h2 id="toc_0">前言</h2>
-
-<p>学习一下耗时记录的模块</p>
-
-<h2 id="toc_1">主要结构体</h2>
-
-<p><em>latencySample</em>和<em>latencyTimeSeries</em>构成了整个耗时记录表</p>
-
-<pre><code>struct latencySample {
-    int32_t time; /* 当前时间 */
-    uint32_t latency; /* 耗时信息 */
-};
-
-/* The latency time series for a given event. */
-struct latencyTimeSeries {
-    int idx; /* 当前记录的下标信息 */
-    uint32_t max; /* 当前最大的耗时信息 */
-    struct latencySample samples[LATENCY_TS_LEN]; /* 160条的日志记录 */
-};
-</code></pre>
-
-<p><em>latencyStats</em>结构体则是针对事件的耗时分析</p>
-
-<pre><code>struct latencyStats {
-    uint32_t all_time_high; /* 复位后观察到的最大值 */
-    uint32_t avg;           /* 平均值 */
-    uint32_t min;           /* 最小值 */
-    uint32_t max;           /* 最大值 */
-    uint32_t mad;           /* 平均绝对离差 */
-    uint32_t samples;       /* 实例数 */
-    time_t period;          /* 经过的时间，（秒） */
-};
-</code></pre>
-
-<h2 id="toc_2">主要函数</h2>
-
-<p><em>latencyAddSample</em>函数是添加一个记录进耗时队列中</p>
-
-<pre><code>void latencyAddSample(char *event, mstime_t latency) {
-     /* 获取对应事件的耗时对象 */
-    struct latencyTimeSeries *ts = dictFetchValue(server.latency_events,event);
-    time_t now = time(NULL);
-    int prev;
-
-    /* 如果不存在，则分配一个对象 */
-    if (ts == NULL) {
-        ts = zmalloc(sizeof(*ts));
-        ts-&gt;idx = 0;
-        ts-&gt;max = 0;
-        memset(ts-&gt;samples,0,sizeof(ts-&gt;samples));
-        dictAdd(server.latency_events,zstrdup(event),ts);
-    }
-
-    /* 如果耗时过长，则记录下来 */
-    if (latency &gt; ts-&gt;max) ts-&gt;max = latency;
-
-    prev = (ts-&gt;idx + LATENCY_TS_LEN - 1) % LATENCY_TS_LEN; /* 获得前一个记录 */
-    if (ts-&gt;samples[prev].time == now) {    /* 若时间相同且延时更改，则进行替换 */
-        if (latency &gt; ts-&gt;samples[prev].latency)
-            ts-&gt;samples[prev].latency = latency;
-        return;
-    }
-
-    ts-&gt;samples[ts-&gt;idx].time = time(NULL);
-    ts-&gt;samples[ts-&gt;idx].latency = latency;
-
-    ts-&gt;idx++;
-    if (ts-&gt;idx == LATENCY_TS_LEN) ts-&gt;idx = 0;     /* 重复轮回 */
-}
-</code></pre>
-
-<p><em>latencyResetEvent</em> 函数用于重置某个事件的耗时记录</p>
-
-<pre><code>int latencyResetEvent(char *event_to_reset) {
-    dictIterator *di;
-    dictEntry *de;
-    int resets = 0;
-
-    di = dictGetSafeIterator(server.latency_events);     /* 获得一个迭代器 */
-    while((de = dictNext(di)) != NULL) {    /* 迭代整个字典，对符合条件的事件进行删除 */
-        char *event = dictGetKey(de);
-
-        if (event_to_reset == NULL || strcasecmp(event,event_to_reset) == 0) {
-            dictDelete(server.latency_events, event);
-            resets++;
-        }
-    }
-    dictReleaseIterator(di);     /* 删除迭代器 */
-    return resets;
-}
-</code></pre>
-
-<h2 id="toc_3">主要命令</h2>
-
-<p>主要命令有如下四个：</p>
-
-<pre><code> * LATENCY SAMPLES: 指定事件的返回时间延迟采样.
- * LATENCY LATEST: 返回所有事件类的最新延迟.
- * LATENCY DOCTOR: 返回实例可读性的实例分析.
- * LATENCY GRAPH: 提供指定事件的等待时间的ASCII图.
-</code></pre>
-
-<h2 id="toc_4">总结</h2>
-
-<p>看了看延迟记录而已</p>
-
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[Redis 慢日志]]></title>
-    <link href="https://artikell.github.io/15304363559324.html"/>
-    <updated>2018-07-01T17:12:35+08:00</updated>
-    <id>https://artikell.github.io/15304363559324.html</id>
-    <content type="html"><![CDATA[
-<h2 id="toc_0">前言</h2>
-
-<p>慢日志是一个比较简短的模块，先来看看</p>
-
-<h2 id="toc_1">慢日志条件</h2>
-
-<p>说的慢日志，我们可以先看看call调用函数的flags分类：</p>
-
-<pre><code>#define CMD_CALL_NONE 0
-#define CMD_CALL_SLOWLOG (1&lt;&lt;0)
-#define CMD_CALL_STATS (1&lt;&lt;1)
-#define CMD_CALL_PROPAGATE_AOF (1&lt;&lt;2)
-#define CMD_CALL_PROPAGATE_REPL (1&lt;&lt;3)
-#define CMD_CALL_PROPAGATE (CMD_CALL_PROPAGATE_AOF|CMD_CALL_PROPAGATE_REPL)
-#define CMD_CALL_FULL (CMD_CALL_SLOWLOG | CMD_CALL_STATS | CMD_CALL_PROPAGATE)
-</code></pre>
-
-<p>包括四类：添加慢日志、进入命令统计、AOF传播和REPL传播<br/>
-正常命令都会包含所有<em>flags</em>，所以默认会进行慢日志统计。</p>
-
-<pre><code>    if (flags &amp; CMD_CALL_SLOWLOG &amp;&amp; c-&gt;cmd-&gt;proc != execCommand) {  // 慢日志写入
-        char *latency_event = (c-&gt;cmd-&gt;flags &amp; CMD_FAST) ?
-                              &quot;fast-command&quot; : &quot;command&quot;;
-        latencyAddSampleIfNeeded(latency_event,duration/1000);
-        slowlogPushEntryIfNeeded(c,c-&gt;argv,c-&gt;argc,duration);
-    }
-</code></pre>
-
-<p>慢日志入口的判断就比较简单，判断是否有标记以及命令是否为<em>execCommand</em>，事务处理不计入统计。</p>
-
-<h2 id="toc_2">慢日志源码剖析</h2>
-
-<h3 id="toc_3">主要结构体</h3>
-
-<p><em>slowlogEntry</em>是慢日志的唯一结构体</p>
-
-<pre><code>typedef struct slowlogEntry {
-    robj **argv;        /* 参数列表 */   
-    int argc;           /* 参数个数 */   
-    long long id;       /* 唯一编号 */
-    long long duration; /* 处理时长，毫秒 */
-    time_t time;        /* 执行时间 */
-    sds cname;          /* 客户端名称 */
-    sds peerid;         /* 客户端地址 */
-} slowlogEntry;
-</code></pre>
-
-<h3 id="toc_4">主要函数</h3>
-
-<p><em>slowlogPushEntryIfNeeded</em> 函数是整个慢日志的触发入口：</p>
-
-<pre><code>void slowlogPushEntryIfNeeded(client *c, robj **argv, int argc, long long duration) {
-    if (server.slowlog_log_slower_than &lt; 0) return; /* 未开启慢日志记录 */
-    if (duration &gt;= server.slowlog_log_slower_than) /* 耗时足够 */
-        /* 将慢日志插入列表中 */
-        listAddNodeHead(server.slowlog,
-                        slowlogCreateEntry(c,argv,argc,duration));
-
-        
-    while (listLength(server.slowlog) &gt; server.slowlog_max_len)
-        listDelNode(server.slowlog,listLast(server.slowlog));
-}
-</code></pre>
-
-<p><em>slowlogCreateEntry</em>函数，则是创建一个慢日志元素的方法：</p>
-
-<pre><code>slowlogEntry *slowlogCreateEntry(client *c, robj **argv, int argc, long long duration) {
-    slowlogEntry *se = zmalloc(sizeof(*se));
-    int j, slargc = argc;
-
-    /* 参数不允许超过32个，否则就截取前32个 */
-    if (slargc &gt; SLOWLOG_ENTRY_MAX_ARGC) slargc = SLOWLOG_ENTRY_MAX_ARGC;
-    se-&gt;argc = slargc;
-    se-&gt;argv = zmalloc(sizeof(robj*)*slargc);
-    for (j = 0; j &lt; slargc; j++) {
-        /* 如果是最后一个元素时，则添加一个省略号来标记 */
-        if (slargc != argc &amp;&amp; j == slargc-1) {
-            se-&gt;argv[j] = createObject(OBJ_STRING,
-                sdscatprintf(sdsempty(),&quot;... (%d more arguments)&quot;,
-                argc-slargc+1));
-        } else {
-            /* 处理长度大于128的参数信息 */
-            if (argv[j]-&gt;type == OBJ_STRING &amp;&amp;
-                sdsEncodedObject(argv[j]) &amp;&amp;
-                sdslen(argv[j]-&gt;ptr) &gt; SLOWLOG_ENTRY_MAX_STRING)
-            {
-                sds s = sdsnewlen(argv[j]-&gt;ptr, SLOWLOG_ENTRY_MAX_STRING);
-
-                s = sdscatprintf(s,&quot;... (%lu more bytes)&quot;,
-                    (unsigned long)
-                    sdslen(argv[j]-&gt;ptr) - SLOWLOG_ENTRY_MAX_STRING);
-                se-&gt;argv[j] = createObject(OBJ_STRING,s);
-            } else if (argv[j]-&gt;refcount == OBJ_SHARED_REFCOUNT) {
-                /* 如果是共享的变量，则直接复制 */
-                se-&gt;argv[j] = argv[j];
-            } else {
-                /* 重新开辟内存 */
-                se-&gt;argv[j] = dupStringObject(argv[j]);
-            }
-        }
-    }
-    se-&gt;time = time(NULL);
-    se-&gt;duration = duration;
-    se-&gt;id = server.slowlog_entry_id++;     /* 自增编号 */
-    se-&gt;peerid = sdsnew(getClientPeerId(c));
-    se-&gt;cname = c-&gt;name ? sdsnew(c-&gt;name-&gt;ptr) : sdsempty();
-    return se;
-}
-</code></pre>
-
-<p><em>slowlogReset</em>函数是用于重置慢日志的函数，方法就行遍历并删除节点</p>
-
-<pre><code>void slowlogReset(void) {
-    while (listLength(server.slowlog) &gt; 0)
-        listDelNode(server.slowlog,listLast(server.slowlog));
-}
-</code></pre>
-
-<h3 id="toc_5">结语</h3>
-
-<p>看看比较简单的慢日志模块而已。</p>
 
 ]]></content>
   </entry>

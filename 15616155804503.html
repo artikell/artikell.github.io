@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  张雅宸的空间 - artikell
+  Linux 锁 - artikell
   
   </title>
  <meta name="description" content="The royal family never give up">
@@ -256,9 +256,36 @@
             <div class="large-9 medium-9 columns">
 
  <div class="markdown-body">
-<h1>张雅宸的空间</h1>
+<h1>Linux 锁</h1>
 
-<p><a href="https://github.com/zhangyachen/zhangyachen.github.io/issues">张雅宸</a></p>
+<h2 id="toc_0">前言</h2>
+
+<p>锁，在系统中，有那么多，可是没看到有一个整体介绍的问题，没有的话，我咋和妹子愉快的交流。</p>
+
+<h2 id="toc_1">锁的类型</h2>
+
+<p>遵循互联网三大原则：是什么、为什么、怎么做，我们来锁看看是什么。</p>
+
+<h3 id="toc_2">互斥量(mutex)</h3>
+
+<p>锁操作主要包括加锁<em>pthread_mutex_lock()</em>、解锁<em>pthread_mutex_unlock()</em>和测试加锁 <em>pthread_mutex_trylock()</em>三个，不论哪种类型的锁，都不可能被两个不同的线程同时得到，而必须等待解锁。</p>
+
+<p><em>pthread_mutex_trylock()</em>语义与<em>pthread_mutex_lock()</em>类似，不同的是在锁已经被占据时返回<em>EBUSY</em>而不是挂起等待。</p>
+
+<ol>
+<li>读写锁(rwlock)</li>
+<li>条件变量(cond)</li>
+<li>信号量(sem)</li>
+<li>自旋锁(spin_lock)</li>
+<li>文件互斥</li>
+<li>原子操作(atomic)</li>
+</ol>
+
+<h2 id="toc_3">相关链接</h2>
+
+<ul>
+<li><a href="http://mingxinglai.com/cn/2013/06/mutil-threads/#1">http://mingxinglai.com/cn/2013/06/mutil-threads/#1</a></li>
+</ul>
 
 
 </div>
@@ -270,15 +297,15 @@
   <div class="large-6 columns">
 	<div class="text-left" style="padding:15px 0px;">
 		
-	        <a href="15605624219274.html"  title="Previous Post: TCP vs UDP 总结">&laquo; TCP vs UDP 总结</a>
+	        <a href="15619022452968.html"  title="Previous Post: 系统调用探真">&laquo; 系统调用探真</a>
 	    
 	</div>
   </div>
   <div class="large-6 columns">
 	<div class="text-right" style="padding:15px 0px;">
 		
-	        <a href="15605615631803.html" 
-	        title="Next Post: 工作发展">工作发展 &raquo;</a>
+	        <a href="15613654156668.html" 
+	        title="Next Post: 限流算法整理">限流算法整理 &raquo;</a>
 	    
 	</div>
   </div>
@@ -325,7 +352,7 @@
 </div>
 <script type="text/javascript">
 	$(function(){
-		var currentURL = '15605621287027.html';
+		var currentURL = '15616155804503.html';
 		$('#side-nav a').each(function(){
 			if($(this).attr('href') == currentURL){
 				$(this).parent().addClass('active');

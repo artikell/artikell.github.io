@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
     
-  张雅宸的空间 - artikell
+  共享内存探真 - artikell
   
   </title>
  <meta name="description" content="The royal family never give up">
@@ -256,9 +256,92 @@
             <div class="large-9 medium-9 columns">
 
  <div class="markdown-body">
-<h1>张雅宸的空间</h1>
+<h1>共享内存探真</h1>
 
-<p><a href="https://github.com/zhangyachen/zhangyachen.github.io/issues">张雅宸</a></p>
+<h2 id="toc_0">前言</h2>
+
+<p>当有人问起共享内存的实现的时候，被人问倒了。</p>
+
+<h2 id="toc_1">共享内存类型</h2>
+
+<p>现有系统共有2类共享内存的方法：mmap、shm。下面来介绍2类的优缺点：</p>
+
+<h3 id="toc_2">mmap</h3>
+
+<p>机制： 在磁盘上建立一个文件，每个进程存储器中，单独开辟一个空间来映射，保存到实际硬盘，实际并没有反映到主存上<br/>
+优点： 存储量大<br/>
+缺点： 读取和写入速度比较慢<br/>
+使用方法：<br/>
+<code><br/>
+int fd = open(argv[1],O_RDWR|O_CREAT|O_TRUNC,0644);<br/>
+mmap(NULL,sizeof(struct STU),PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);<br/>
+munmap(p,sizeof(student))<br/>
+</code><br/>
+<img src="media/15649767035810/15649864204288.jpg" alt="mmap模型图示"/></p>
+
+<h3 id="toc_3">shm</h3>
+
+<p>机制： 每个进程的共享内存都直接映射到实际物理存储器上，shm保存到物理存储器(主存)，实际的存储量直接反映到主存上<br/>
+优点：进程间访问速度比磁盘快<br/>
+缺点： 存储量不能非常大<br/>
+使用方法：<br/>
+<code><br/>
+key_t ftok(const char *pathname, int proj_id) <br/>
+int shmget( key_t shmkey , int shmsiz , int flag );<br/>
+void *shmat( int shmid , char *shmaddr , int shmflag );<br/>
+</code></p>
+
+<p><img src="media/15649767035810/15649864440502.jpg" alt="shm模型图示"/></p>
+
+<h3 id="toc_4">mmap和shm的差异</h3>
+
+<p>1、mmap是在磁盘上建立一个文件，每个进程地址空间中开辟出一块空间进行映射。<br/>
+而对于shm而言，shm每个进程最终会映射到同一块物理内存。shm保存在物理内存，这样读写的速度要比磁盘要快，但是存储量不是特别大。<br/>
+2、相对于shm来说，mmap更加简单，调用更加方便，所以这也是大家都喜欢用的原因。<br/>
+3、另外mmap有一个好处是当机器重启，因为mmap把文件保存在磁盘上，这个文件还保存了操作系统同步的映像，所以mmap不会丢失，但是shmget就会丢失。</p>
+
+<h2 id="toc_5">shm实现</h2>
+
+<p>结构图示都如此明白，那共享内存功能如何实现？通过页表。</p>
+
+<p><img src="media/15649767035810/15649869796950.jpg" alt=""/></p>
+
+<p>ftok将一个已存在的路径名和一个整数标识符转换成一个key_t值。<br/>
+<code><br/>
+key_t ftok(const char *pathname, int proj_id)<br/>
+</code><br/>
+ftok会组合三个值来产生key：<br/>
+1. pathname所在的文件系统的信息。<br/>
+2. 该文件在本文件系统内的索引节点号。<br/>
+3. id的低序8位。 </p>
+
+<p>在使用shm方法时，可以通过ftok和IPC_PRIVATE的方法结合shm_get方法申请一块共享内存项。当使用shmat方法时，会将页表加载至进程的页表项中。</p>
+
+<h2 id="toc_6">mmap实现</h2>
+
+<p><img src="media/15649767035810/15649879653349.jpg" alt=""/></p>
+
+<p>mmap的执行，仅仅是在内核中建立了文件与虚拟内存空间的对应关系。用户访问这些虚拟内存空间时，页面表里面是没有这些空间的表项的。当用户程序试图访问这些映射的空间时，于是产生缺页异常。内核捕捉这些异常，逐渐将文件载入。<br/>
+所谓的载入过程，具体的操作就是read和write在管理pagecache。Vma的结构体中有很文件操作集。vma操作集中会有自己关于page cache的操作集合。这样，虽然是两种不同的系统调用，由于操作和调用触发的路径不同。但是最后还是落实到了page cache的管理。实现了文件内容的操作。</p>
+
+<h2 id="toc_7">问题</h2>
+
+<ol>
+<li>进程是如何管理内存的</li>
+</ol>
+
+<h2 id="toc_8">相关链接</h2>
+
+<ul>
+<li><a href="https://www.cnblogs.com/52php/p/5861372.html">Linux进程间通信（六）：共享内存 shmget()、shmat()、shmdt()、shmctl()</a></li>
+<li><a href="https://blog.csdn.net/hj605635529/article/details/73163513">mmap映射区和shm共享内存的区别总结</a></li>
+<li><a href="https://blog.csdn.net/xhu_eternalcc/article/details/16801825">IPC之IPC_PRIVATE与ftok比较</a></li>
+<li><a href="http://blog.chinaunix.net/uid-24517549-id-4114814.html">共享内存的常用函数原理剖析</a></li>
+<li><a href="https://blog.csdn.net/edwardlulinux/article/details/8604400">Mmap的实现原理和应用</a></li>
+<li><a href="http://ju.outofmemory.cn/entry/224106">mmap实例及原理分析</a></li>
+<li><a href="https://www.cnblogs.com/zhaoyl/p/5515317.html">mmap为什么比read/write快(兼论buffercache和pagecache)</a></li>
+<li><a href="https://www.cnblogs.com/alantu2018/p/8472097.html">内存管理概述、内存分配与释放、地址映射机制（mm_struct, vm_area_struct）、malloc/free 的实现</a></li>
+</ul>
 
 
 </div>
@@ -270,15 +353,13 @@
   <div class="large-6 columns">
 	<div class="text-left" style="padding:15px 0px;">
 		
-	        <a href="15605624219274.html"  title="Previous Post: TCP vs UDP 总结">&laquo; TCP vs UDP 总结</a>
-	    
 	</div>
   </div>
   <div class="large-6 columns">
 	<div class="text-right" style="padding:15px 0px;">
 		
-	        <a href="15605615631803.html" 
-	        title="Next Post: 工作发展">工作发展 &raquo;</a>
+	        <a href="15629235064982.html" 
+	        title="Next Post: PHP基本数据结构">PHP基本数据结构 &raquo;</a>
 	    
 	</div>
   </div>
@@ -325,7 +406,7 @@
 </div>
 <script type="text/javascript">
 	$(function(){
-		var currentURL = '15605621287027.html';
+		var currentURL = '15649767035810.html';
 		$('#side-nav a').each(function(){
 			if($(this).attr('href') == currentURL){
 				$(this).parent().addClass('active');
