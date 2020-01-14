@@ -85,6 +85,161 @@ MMU最初以10,10,12作为位段，4K为一页，而每个表项是4字节，所
 
 为何是使用20位作为基地址？由于2^12正好为4096个字节=4k大小，所以，正好是一个页描述符的基地址。
 
+> 问题一：LDT和GDT的使用？
+
+### 重要数据结构
+
+#### 物理空间管理结构体
+
+在Linux中，mem_map是一个page结构指针，存储了所有的页面结构体数组。同时针对所有页面都划分为了ZONE_DMA和ZONE_NORMAL2个管理区。这个后续再说。
+
+针对每个管理区都有一个数据结构：zone_struct结构体。
+首先，每个管理区都存在一组free_area_t队列，按页面大小加以管理，主要是4，8，16... 1024。最大为2的10次方的页面块，每个页面4K，也就是4M字节。
+
+```
+typedef struct zone_struct {
+    spinlock_t lock;
+    unsigned long offset;
+    unsigned long free_pages;
+    unsigned long inactive_clean_pages;
+    unsigned long inactive_dirty_pages;
+    unsigned long pages_min, pages_low, pages_high;
+
+    struct list_head inactive_clean_list;
+    free_area_t free_area[MAX_ORDER];
+
+    char *name;
+    unsigned long size;
+
+    struct pglist_data *zone_pgdat;
+    unsigned long zone_start_paddr;
+    unsigned long zone_start_mapnr;
+    struct page *zone_mem_map;
+} zone_t;
+```
+
+`offset`表示分区在mem_map的起始页面号，而会存在连续一整块的页面都属于某个管理区。
+
+```
+typedef struct free_area_struct {
+    struct list_head free_list;
+    unsigned int *map;
+} free_area_t;
+```
+
+为了支持NUMA，Linux在zone_struct结构体上增加了pglist_data结构体。
+
+```
+typedef struct pglist_data {
+    zone_t node_zones[MAX_NR_ZONES];
+    zonelist_t node_zonelists[NR_GFPINDEX];
+    
+    struct page *node_mem_map;
+    unsigned long *valid_addr_bitmap;
+    struct bootmem_data *bdata;
+    
+    unsigned long node_start_paddr;
+    unsigned long node_start_mapnr;
+    unsigned long node_size;
+
+    int node_id;
+    struct pglist_data *node_next;
+} pg_data_t;
+```
+
+所有的pglist_data结构体，可通过node_next来形成一个单链队列。而每个结构体中的node_mem_map都指向具体节点的page结构数组。node_zones最多也有3个管理区，而每个zone结构体也存在一个zone_pgdat指针指向所属的pglist_data对象。
+
+同时，在pglist_data中设置了node_zonelists数组。
+
+```
+typedef struct zonelist_struct {
+    zone_t * zones [MAX_NR_ZONES+1]; // NULL delimited
+    int gfp_mask;
+} zonelist_t;
+```
+
+主要关联所有的zone，用于搜索不同的存储节点，表示了分配策略。每个存储节点都存在多个分配策略，大小为0x100（256种）所以要求分配页面时，需要说明采用哪种分配策略。
+
+#### 虚拟空间管理结构体
+
+Linux为每个进程分配了4GB的虚拟空间，其中，用户空间占了3GB。虽然当物理空间不连续的时候还是可以使用页表机制将其映射成连续的虚拟空间，但是实际上使用的时候虚拟空间也不一定是连续的。
+
+所以在Linux内核中还有一个数据结构来管理成块的虚拟空间（include/linux/mm.h）
+
+```
+struct vm_area_struct {
+    struct mm_struct * vm_mm;
+
+    unsigned long vm_start;
+    unsigned long vm_end;
+
+    struct vm_area_struct *vm_next;
+    pgprot_t vm_page_prot;
+    unsigned long vm_flags;
+    short vm_avl_height;
+
+    struct vm_area_struct * vm_avl_left;
+    struct vm_area_struct * vm_avl_right;
+
+    struct vm_area_struct *vm_next_share;
+    struct vm_area_struct **vm_pprev_share;
+
+    struct vm_operations_struct * vm_ops;
+    unsigned long vm_pgoff;
+    struct file * vm_file;
+    unsigned long vm_raend;
+    void * vm_private_data;
+};
+```
+每一个vm_area_struct管理一块连续的虚拟空间（注意：不同进程的虚拟用户空间一般不互相影响），vm_start和vm_end分别表示虚拟空间的开始和结束地址。
+
+vm_next是用来连接统一进程的所有vm_area_struct序列链，是按照高低次序进行连接的。
+
+当一个进程的虚存块划分地较少的时候可以使用链式连接查询，但是如果太多的话这样查询效率会降低，所以在块数较多的时候采用AVL树进行存储，也就是平衡二叉树。vm_area_struct中的vm_avl_height、vm_avl_left和vm_avl_right都是和AVL树有关。
+
+vm_next_share、vm_pprev_share、vm_ops等都和磁盘文件以及内存换出等有关，在以后会说到。
+
+在vm_area_struct开头有一个定义：struct mm_struct *vm_mm这个是表明它属于哪个内存进程的内存管理。
+
+```
+struct mm_struct {
+    struct vm_area_struct * mmap;
+    struct vm_area_struct * mmap_avl;
+    struct vm_area_struct * mmap_cache;
+
+    pgd_t * pgd;
+
+    atomic_t mm_users;
+    atomic_t mm_count;
+    int map_count;
+    struct semaphore mmap_sem;
+    spinlock_t page_table_lock;
+
+    struct list_head mmlist;
+    
+    unsigned long start_code, end_code, start_data, end_data;
+    unsigned long start_brk, brk, start_stack;
+    unsigned long arg_start, arg_end, env_start, env_end;
+    unsigned long rss, total_vm, locked_vm;
+    unsigned long def_flags;
+    unsigned long cpu_vm_mask;
+    unsigned long swap_cnt;
+    unsigned long swap_address;
+    
+    mm_context_t context;
+};
+```
+
+这个结构体是比vm_area_struct更高级的数据结构，每个进程都存在一个mm_struct结构体。在进程控制块task_struct结构体中都有一个指针指向mm_struct对象。
+
+1. mmap用来建立一个虚存空间的单链队列；
+2. mmap_avl用来建立虚存空间的AVL树；
+3. mmap_cache用来指向最近一次用到的虚存区间结构；
+4. pgd用来指向该进程的页目录表；
+5. 一个进程的mm_struct可以为多个进程共享，mm_user和mm_count就是用来计数的；
+6. map_count用来记录进程有几个虚存空间；
+7. mmap_sem和page_table_lock是用来定义P、V操作的信号量。
+8. 另外start_code、end_code等就是该进程的代码等起始、结束地址。
 
 
 ## 地址映射过程
