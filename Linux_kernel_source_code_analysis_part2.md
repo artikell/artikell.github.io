@@ -271,6 +271,52 @@ avl的建立主要会针对vm个数大于32时触发。
 
 当存在上述的异常情况，cpu会触发do_page_fault函数处理相关页面。函数会传入2个参数：pt_regs表示异常场景下的各个寄存器数据、error_code表示异常的错误编号。
 
+最初会有2个特殊case判断：是否为驱动程序、当前程序映射是否建立。若命中则不做继续的处理。
+
+后续就利用find_vma方法来找到对应的虚存空间块。而在find_vma方法的处理上，主要会返回第一个地址小于目标地址的虚存空间。所以也就存在3种情况：*完全命中区间、完全未命中区间、在2个区间中的空洞*。
+
+在命中2个区间中的空洞也存在2个情况：堆栈区、mmap的撤回区。
+
+如果是命中了mmap的撤回区，那就是出现报错逻辑，那就应该对errcode变量进行判断处理并返回。
+
+如果区域命中了VM_GROWSDOWN标记，那说明这个区域是堆栈区，那系统会尝试获取上方4个字节的地址是否还是比esp指针小，如果小，说明当前地址异常。否则就表示正常的增长的区域，所以需要进行扩展栈区。
+
+进行栈区扩展的时候，会直接修改vm_struct结构体，后交由good_area流程处理。这里主要会检查当前命中的页面权限是否正常，如果写操作命中只读权限，那继续失败。
+
+而当前扩展的新页面还是一个不存在物理内存的虚拟空间，则继续调用handle_mm_fault方法分配页面。该方法会检查pte，若不存在则分配页面。而针对pte对应的页面有缺失时，会调用do_no_page方法来分配，底层继续调用do_anonymous_page方法来分配实际的物理页面。最后将页面和pte进行绑定处理。
+
+
+### 物理页面的使用和流转
+
+首先，在系统初始化阶段，内核根据检测到的物理内存大小，未每一个页面都建立一个page结构，形成一个page结构的数组，并使一个全局量mem_map指向这个数组。后续又建立zone管理区来管理页面。
+
+与此类似，针对物理设备，也存在一个类似的管理结构体：swap_info_struct，用于描述和管理页面交换的文件和设备。
+
+```
+struct swap_info_struct {
+    unsigned int flags;
+    kdev_t swap_device;
+    spinlock_t sdev_lock;
+    struct dentry * swap_file;
+    struct vfsmount *swap_vfsmnt;
+    unsigned short * swap_map;
+    unsigned int lowest_bit;
+    unsigned int highest_bit;
+    unsigned int cluster_next;
+    unsigned int cluster_nr;
+    int prio; /* swap priority */
+    int pages;
+    unsigned long max;
+    int next; /* next entry on swap list */
+};
+```
+1. swap_map指向一个数组代表一个物理页面，而第一个页面主要用于描述整个设备的信息。
+2. pages表示数组的大小。
+3. lowest_bit和highest_bit表示一个可使用的物理页面区间
+4. max这是最大的页面号
+5. cluster_next和cluster_nr也主要用于适用多个磁盘按集群做区分
+
+
 
 ## 地址映射过程
 
