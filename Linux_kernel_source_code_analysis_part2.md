@@ -7,6 +7,22 @@
 于是针对当前情况，linux设计了3层结构：PGD,PMD,PT。
 而PTE是page table entry，表项结构体。PT是PTE的大数组，PMD和PGD则是PT的映射表。
 
+```
+typedef struct {
+unsigned int ptba:20; /* 页表基地址的高20位  */
+unsigned int avail:3; /*   */
+unsigned int g:1; /* 是否为全局性页面  */
+unsigned int ps:1; /* 页面大小  */
+unsigned int reserved:1; /*   */
+unsigned int a:1; /* 已经被访问过  */
+unsigned int pcd:1; /* 关闭缓冲存储器  */
+unsigned int pwt:1; /* 用于缓冲存储器  */
+unsigned int u_s:1; /* 用户权限还是系统权限  */
+unsigned int r_w:1; /* 只读或可写  */
+unsigned int p:1; /* 0表示不在内存中  */
+}
+```
+
 ![](2020-1-12-22-46-27.jpg)
 
 虚拟Linux内存管理通过四部完成地址转换：
@@ -240,6 +256,20 @@ struct mm_struct {
 6. map_count用来记录进程有几个虚存空间；
 7. mmap_sem和page_table_lock是用来定义P、V操作的信号量。
 8. 另外start_code、end_code等就是该进程的代码等起始、结束地址。
+
+针对vm_area_struct的查询和插入都存在一个对应的流程。在查询虚存地址是否命中空间时，会先查询mmap_cache，(命中率高达35%)，若未命中则会通过avl进行定位，若不存在avl，则直接查询mmap链表。
+
+而在插入的流程中，会先将vm_area_struct和mm_struct进行加锁，避免2者被修改。后会检查是否存在avl，若存在，则插入avl树中，同时再插入mmap链表中，最后赋值给mmap_cache。
+avl的建立主要会针对vm个数大于32时触发。
+
+### 越界访问
+
+越界访问主要存在3种情况：
+1. 访问的页面从未建立过，页表项为空
+2. 访问的页面不在内存中
+3. 访问的页面与权限不符，写入数据至只读页面
+
+
 
 
 ## 地址映射过程
