@@ -3,12 +3,12 @@
 ## Source: https://github.com/hexojs/hexo/
 
 # Site
-title: Hexo
+title: Start Again
 subtitle: ''
 description: ''
 keywords:
-author: John Doe
-language: en
+author: Skyfire Lee
+language: zh
 timezone: ''
 
 # URL
@@ -98,4 +98,5 @@ theme: landscape
 # Deployment
 ## Docs: https://hexo.io/docs/deployment.html
 deploy:
-  type: ''
+  type: git
+  repo: git@github.com:artikell/artikell.github.io.git
