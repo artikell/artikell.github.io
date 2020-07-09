@@ -15,7 +15,7 @@
 <meta property="og:description" content="Golang调度是runtime中的核心部分，要说涉及到的东西，从基本的线程协程切换、GC的STW，到锁的暂停，都有相关涉猎。今天请个假休息一下，有空整理整理最近看的调度知识。 调度基本知识进程、线程和协程进程和线程的区别都不用说了，简单来说就是，最初，大佬们觉得，每个任务肯定都有独立的内存空间、句柄等等等。只要保证程序直接能够不互相干扰就行。 当机器性能不断的提升，程序员们发现，我任务太多了，需">
 <meta property="og:locale" content="zh">
 <meta property="article:published_time" content="2020-07-08T07:38:21.000Z">
-<meta property="article:modified_time" content="2020-07-08T14:34:38.640Z">
+<meta property="article:modified_time" content="2020-07-09T15:45:06.717Z">
 <meta property="article:author" content="Skyfire Lee">
 <meta name="twitter:card" content="summary">
   
@@ -134,7 +134,10 @@
 <p>到这一步为止，整个进程还是只存在一个线程，但是存在3个g：g0、signalG、mainG。之后，就开始执行一个调度流程。</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">BL	runtime·mstart(SB)</span><br></pre></td></tr></table></figure>
 
-<h3 id="调度启动流程"><a href="#调度启动流程" class="headerlink" title="调度启动流程"></a>调度启动流程</h3><p>进入<code>mstart</code>方法后，核心功能具体可以分为4部分：  </p>
+<h3 id="调度启动流程"><a href="#调度启动流程" class="headerlink" title="调度启动流程"></a>调度启动流程</h3><p>这是每个线程进入循环的入口。为什么这么说，代码如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">func newosproc(mp *m) &#123;</span><br><span class="line">	... ...</span><br><span class="line">	ret :&#x3D; clone(cloneFlags, stk, unsafe.Pointer(mp), unsafe.Pointer(mp.g0), unsafe.Pointer(funcPC(mstart)))</span><br></pre></td></tr></table></figure>
+<p>这就是创建一个线程的代码，印象中的线程创建是<code>thread_create</code>方法，底层最后还是调用的<code>clone</code>方法<a href="https://linux.die.net/man/2/clone" target="_blank" rel="noopener">参考</a>，所有golang自行封装了一个方法。而这个调用的最后一个方法就是<code>mstart</code>方法。</p>
+<p>进入<code>mstart</code>方法后，核心功能具体可以分为4部分：  </p>
 <ol>
 <li>osStack的判断</li>
 <li>stackguard的赋值</li>
@@ -158,11 +161,29 @@
 </blockquote>
 <p>再之后就会有<code>mstartfn</code>函数的执行，这一个函数具体会存在3种情况：sysmon抢占线程、templateThread模板线程、mspinning自旋方法。前2者在前面也提到过是2个特殊的线程，进入后便会不断的轮询等待。后者的自旋只是对当前的m做了一个自旋的标记。</p>
 <p>而后，针对非m0的m要进行一个p的绑定，m0为啥不需要呢？当然是因为m0在之前就已经绑定好了。</p>
-<h3 id="开始调度轮询"><a href="#开始调度轮询" class="headerlink" title="开始调度轮询"></a>开始调度轮询</h3>
+<h3 id="开始调度循环"><a href="#开始调度循环" class="headerlink" title="开始调度循环"></a>开始调度循环</h3><p>题目是调度循环，而代码中其实是没有一个for循环，最后的逻辑是进入了一个execute方法，那具体是如何实现循环？</p>
+<p>循环具体涉及到了几个函数的循环：<code>schedule-&gt;execute-&gt;goexit-&gt;goexit1-&gt;goexit0-&gt;schedule</code></p>
+<h4 id="Schedule函数"><a href="#Schedule函数" class="headerlink" title="Schedule函数"></a>Schedule函数</h4><p>函数的第一段逻辑，主要会判断当前m是否存在绑定的g，如果存在，则暂停当前m，而后执行<code>lockedg</code>。Why？这一段不是主流程，稍后再看。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">if _g_.m.lockedg !&#x3D; 0 &#123;</span><br><span class="line">	stoplockedm()</span><br><span class="line">	execute(_g_.m.lockedg.ptr(), false) &#x2F;&#x2F; Never returns.</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>之后就是<code>gcwaiting</code>变量的判断，该变量不为0的情况主要是在GC的STW阶段。如果是STW阶段，则会暂停当前的m，等到startTheWorld时，会将所有的p唤醒。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">if sched.gcwaiting !&#x3D; 0 &#123;</span><br><span class="line">	gcstopm()</span><br><span class="line">	goto top</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>下面就是<code>runSafePointFn</code>这个名字，主要功能就是在GC前，需要打开所有的p读写屏障。而这个逻辑，就是简单的需要保证每个P都需要执行一遍。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">if pp.runSafePointFn !&#x3D; 0 &#123;</span><br><span class="line">	runSafePointFn()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>再之后就是执行当前p上挂载的定时器</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">checkTimers(pp, 0)</span><br></pre></td></tr></table></figure>
+
+<p>上述都是一些m特殊的处理流程，等处理完后，就需要开始寻找g来进行执行。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">if gp &#x3D;&#x3D; nil &amp;&amp; gcBlackenEnabled !&#x3D; 0 &#123;</span><br><span class="line">	gp &#x3D; gcController.findRunnableGCWorker(_g_.m.p.ptr())</span><br><span class="line">	tryWakeP &#x3D; tryWakeP || gp !&#x3D; nil</span><br><span class="line">&#125;</span><br><span class="line">if gp &#x3D;&#x3D; nil &#123;</span><br><span class="line">	if _g_.m.p.ptr().schedtick%61 &#x3D;&#x3D; 0 &amp;&amp; sched.runqsize &gt; 0 &#123;</span><br><span class="line">		lock(&amp;sched.lock)</span><br><span class="line">		gp &#x3D; globrunqget(_g_.m.p.ptr(), 1)</span><br><span class="line">		unlock(&amp;sched.lock)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line">if gp &#x3D;&#x3D; nil &#123;</span><br><span class="line">	gp, inheritTime &#x3D; runqget(_g_.m.p.ptr())</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码，基本上也就是3块逻辑：优先执行gc的g、其次查看是否需要获取全局列表、最后查看当前p的列表。</p>
+
       
     </div>
     <footer class="article-footer">
-      <a data-url="http://artikell.github.io/2020/07/08/golang-dispatch/" data-id="ckcdgsg270001oguy1hqlcjo7" class="article-share-link">Share</a>
+      <a data-url="http://artikell.github.io/2020/07/08/golang-dispatch/" data-id="ckceyr0ae00011ruy7ibp7w7n" class="article-share-link">Share</a>
       
       
     </footer>

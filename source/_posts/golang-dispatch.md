@@ -277,3 +277,9 @@ checkTimers(pp, 0)
 上述代码，基本上也就是3块逻辑：优先执行gc的g、其次查看是否需要获取全局列表、最后查看当前p的列表。
 
 
+## 待办事项
+- 定时执行逻辑
+- 锁定线程逻辑
+- tryWakeP逻辑
+- findrunnable逻辑
+- mcall、notesleep逻辑
