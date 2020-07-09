@@ -134,6 +134,15 @@ nocgo:
 
 ### 调度启动流程
 
+这是每个线程进入循环的入口。为什么这么说，代码如下：
+```
+func newosproc(mp *m) {
+	... ...
+	ret := clone(cloneFlags, stk, unsafe.Pointer(mp), unsafe.Pointer(mp.g0), unsafe.Pointer(funcPC(mstart)))
+```
+这就是创建一个线程的代码，印象中的线程创建是`thread_create`方法，底层最后还是调用的`clone`方法[参考](https://linux.die.net/man/2/clone)，所有golang自行封装了一个方法。而这个调用的最后一个方法就是`mstart`方法。
+
+
 进入`mstart`方法后，核心功能具体可以分为4部分：  
 1. osStack的判断
 2. stackguard的赋值
@@ -207,5 +216,64 @@ func mstart1() {
 
 而后，针对非m0的m要进行一个p的绑定，m0为啥不需要呢？当然是因为m0在之前就已经绑定好了。
 
-### 开始调度轮询
+### 开始调度循环
+
+题目是调度循环，而代码中其实是没有一个for循环，最后的逻辑是进入了一个execute方法，那具体是如何实现循环？
+
+循环具体涉及到了几个函数的循环：`schedule->execute->goexit->goexit1->goexit0->schedule`
+
+#### Schedule函数
+
+函数的第一段逻辑，主要会判断当前m是否存在绑定的g，如果存在，则暂停当前m，而后执行`lockedg`。Why？这一段不是主流程，稍后再看。
+
+```
+	if _g_.m.lockedg != 0 {
+		stoplockedm()
+		execute(_g_.m.lockedg.ptr(), false) // Never returns.
+	}
+```
+
+之后就是`gcwaiting`变量的判断，该变量不为0的情况主要是在GC的STW阶段。如果是STW阶段，则会暂停当前的m，等到startTheWorld时，会将所有的p唤醒。
+```
+	if sched.gcwaiting != 0 {
+		gcstopm()
+		goto top
+	}
+```
+
+下面就是`runSafePointFn`这个名字，主要功能就是在GC前，需要打开所有的p读写屏障。而这个逻辑，就是简单的需要保证每个P都需要执行一遍。
+
+```
+	if pp.runSafePointFn != 0 {
+		runSafePointFn()
+	}
+```
+
+再之后就是执行当前p上挂载的定时器
+
+```
+checkTimers(pp, 0)
+```
+
+上述都是一些m特殊的处理流程，等处理完后，就需要开始寻找g来进行执行。
+
+```
+	if gp == nil && gcBlackenEnabled != 0 {
+		gp = gcController.findRunnableGCWorker(_g_.m.p.ptr())
+		tryWakeP = tryWakeP || gp != nil
+	}
+	if gp == nil {
+		if _g_.m.p.ptr().schedtick%61 == 0 && sched.runqsize > 0 {
+			lock(&sched.lock)
+			gp = globrunqget(_g_.m.p.ptr(), 1)
+			unlock(&sched.lock)
+		}
+	}
+	if gp == nil {
+		gp, inheritTime = runqget(_g_.m.p.ptr())
+	}
+```
+
+上述代码，基本上也就是3块逻辑：优先执行gc的g、其次查看是否需要获取全局列表、最后查看当前p的列表。
+
 
