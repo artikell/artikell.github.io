@@ -226,6 +226,8 @@ func mstart1() {
 
 函数的第一段逻辑，主要会判断当前m是否存在绑定的g，如果存在，则暂停当前m，而后执行`lockedg`。Why？这一段不是主流程，稍后再看。
 
+> 什么情况下会从暂停m？
+
 ```
 	if _g_.m.lockedg != 0 {
 		stoplockedm()
@@ -276,6 +278,165 @@ checkTimers(pp, 0)
 
 上述代码，基本上也就是3块逻辑：优先执行gc的g、其次查看是否需要获取全局列表、最后查看当前p的列表。
 
+```
+	if gp.lockedm != 0 {
+		// Hands off own p to the locked m,
+		// then blocks waiting for a new p.
+		startlockedm(gp)
+		goto top
+	}
+
+	execute(gp, inheritTime)
+```
+
+最后针对绑定的g进行特殊处理。否则就执行`execute`方法
+
+> 会从哪些地方去获取g？优先级是什么？
+
+#### Execute函数
+
+该函数主要功能切换当前上下文至指定的g中，具体源码如下，没有特别的逻辑，都是将g属性初始化一遍。
+
+```
+func execute(gp *g, inheritTime bool) {
+	_g_ := getg()
+
+	_g_.m.curg = gp
+	gp.m = _g_.m
+	casgstatus(gp, _Grunnable, _Grunning)
+	gp.waitsince = 0
+	gp.preempt = false
+	gp.stackguard0 = gp.stack.lo + _StackGuard
+	if !inheritTime {
+		_g_.m.p.ptr().schedtick++
+	}
+
+	gogo(&gp.sched)
+}
+```
+
+而`gogo`方法是真正在汇编层切换寄存器的逻辑，传入的sched就是这个g的上下文信息，包含4个寄存器信息，代码如下：
+```
+TEXT runtime·gogo(SB), NOSPLIT, $16-8
+	MOVQ	buf+0(FP), BX		// gobuf
+	MOVQ	gobuf_g(BX), DX
+	MOVQ	0(DX), CX		// make sure g != nil
+	get_tls(CX)
+	MOVQ	DX, g(CX)		// 保存g至tls中
+	// 恢复sp，ax，dx，bp寄存器
+	MOVQ	gobuf_sp(BX), SP	// restore SP
+	MOVQ	gobuf_ret(BX), AX
+	MOVQ	gobuf_ctxt(BX), DX
+	MOVQ	gobuf_bp(BX), BP
+	// 清空gobuf
+	MOVQ	$0, gobuf_sp(BX)	// clear to help garbage collector
+	MOVQ	$0, gobuf_ret(BX)
+	MOVQ	$0, gobuf_ctxt(BX)
+	MOVQ	$0, gobuf_bp(BX)
+	MOVQ	gobuf_pc(BX), BX
+	JMP	BX
+```
+
+#### Goexit函数
+
+goexit方法是当当前线程执行完毕后执行的析构方法，设置的方法为：
+```
+func gostartcallfn(gobuf *gobuf, fv *funcval) {
+    var fn unsafe.Pointer
+    if fv != nil {
+        fn = unsafe.Pointer(fv.fn)
+    } else {
+        fn = unsafe.Pointer(funcPC(nilfunc))
+    }
+    gostartcall(gobuf, fn, unsafe.Pointer(fv))
+}
+
+// adjust Gobuf as if it executed a call to fn with context ctxt
+// and then did an immediate gosave.
+func gostartcall(buf *gobuf, fn, ctxt unsafe.Pointer) {
+    sp := buf.sp
+    if sys.RegSize > sys.PtrSize {
+        sp -= sys.PtrSize
+        *(*uintptr)(unsafe.Pointer(sp)) = 0
+    }
+    sp -= sys.PtrSize
+    *(*uintptr)(unsafe.Pointer(sp)) = buf.pc // 注意这里，这个，这里的 buf.pc 实际上是 goexit 的 pc
+    buf.sp = sp
+    buf.pc = uintptr(fn)
+    buf.ctxt = ctxt
+}
+```
+
+在 gostartcall 中把 newproc1 时设置到 buf.pc 中的 goexit 的函数地址放到了 goroutine 的栈顶，然后重新设置 buf.pc 为 goroutine 函数的位置。这样做的目的是为了在执行完任何 goroutine 的函数时，通过 RET 指令，都能从栈顶把 sp 保存的 goexit 的指令 pop 到 pc 寄存器，效果相当于任何 goroutine 执行函数执行完之后，都会去执行 runtime.goexit，完成一些清理工作后再进入 schedule。
+
+
+当前流程只剩下`goexit->goexit1->goexit0`，代码还算可读，直接上代码：
+```
+TEXT runtime·goexit(SB),NOSPLIT,$0-0
+	BYTE	$0x90	// NOP
+	CALL	runtime·goexit1(SB)	// does not return
+	// traceback from goexit1 must hit code range of goexit
+	BYTE	$0x90	// NOP
+
+	... ... 
+
+// Finishes execution of the current goroutine.
+func goexit1() {
+	if raceenabled {
+		racegoend()
+	}
+	if trace.enabled {
+		traceGoEnd()
+	}
+	mcall(goexit0)
+}
+```
+在代码来看，goexit和goexit1目标只是切换到g0协程中并执行`goexit0`中，第一部分，大部分都是变量清空，并清空当前的g状态置为_Gdead。
+
+```
+func goexit0(gp *g) {
+	_g_ := getg()
+
+	casgstatus(gp, _Grunning, _Gdead)
+	if isSystemGoroutine(gp, false) {
+		atomic.Xadd(&sched.ngsys, -1)
+	}
+	gp.m = nil
+	locked := gp.lockedm != 0
+	gp.lockedm = 0
+	_g_.m.lockedg = 0
+	gp.preemptStop = false
+	gp.paniconfault = false
+	gp._defer = nil // should be true already but just in case.
+	gp._panic = nil // non-nil for Goexit during panic. points at stack-allocated data.
+	gp.writebuf = nil
+	gp.waitreason = 0
+	gp.param = nil
+	gp.labels = nil
+	gp.timer = nil
+	if gcBlackenEnabled != 0 && gp.gcAssistBytes > 0 {
+		scanCredit := int64(gcController.assistWorkPerByte * float64(gp.gcAssistBytes))
+		atomic.Xaddint64(&gcController.bgScanCredit, scanCredit)
+		gp.gcAssistBytes = 0
+	}
+	dropg()
+```
+
+清空完自身的g后，主要就剩下清理其他的信息，例如：写入g的队列中，清空m，进入调度。
+
+```
+func goexit0(gp *g) {
+	... ...
+	gfput(_g_.m.p.ptr(), gp)
+	if locked {
+		if GOOS != "plan9" { // See golang.org/issue/22227.
+			gogo(&_g_.m.g0.sched)
+		} else {
+			_g_.m.lockedExt = 0
+		}
+	}
+	schedule()
+```
 
 ## 待办事项
 - 定时执行逻辑
@@ -283,3 +444,4 @@ checkTimers(pp, 0)
 - tryWakeP逻辑
 - findrunnable逻辑
 - mcall、notesleep逻辑
+- inheritTime功能

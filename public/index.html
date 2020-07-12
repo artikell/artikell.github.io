@@ -64,6 +64,42 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-golang-lockg" class="article article-type-post" itemscope itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2020/07/12/golang-lockg/" class="article-date">
+  <time datetime="2020-07-12T15:51:41.000Z" itemprop="datePublished">2020-07-12</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2020/07/12/golang-lockg/">Golang-Lockg学习</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://artikell.github.io/2020/07/12/golang-lockg/" data-id="ckcj99t5i00001xuy3djah5w5" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-golang-dispatch" class="article article-type-post" itemscope itemprop="blogPost">
   <div class="article-meta">
     <a href="/2020/07/08/golang-dispatch/" class="article-date">
@@ -162,6 +198,9 @@
 <h3 id="开始调度循环"><a href="#开始调度循环" class="headerlink" title="开始调度循环"></a>开始调度循环</h3><p>题目是调度循环，而代码中其实是没有一个for循环，最后的逻辑是进入了一个execute方法，那具体是如何实现循环？</p>
 <p>循环具体涉及到了几个函数的循环：<code>schedule-&gt;execute-&gt;goexit-&gt;goexit1-&gt;goexit0-&gt;schedule</code></p>
 <h4 id="Schedule函数"><a href="#Schedule函数" class="headerlink" title="Schedule函数"></a>Schedule函数</h4><p>函数的第一段逻辑，主要会判断当前m是否存在绑定的g，如果存在，则暂停当前m，而后执行<code>lockedg</code>。Why？这一段不是主流程，稍后再看。</p>
+<blockquote>
+<p>什么情况下会从暂停m？</p>
+</blockquote>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">if _g_.m.lockedg !&#x3D; 0 &#123;</span><br><span class="line">	stoplockedm()</span><br><span class="line">	execute(_g_.m.lockedg.ptr(), false) &#x2F;&#x2F; Never returns.</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 <p>之后就是<code>gcwaiting</code>变量的判断，该变量不为0的情况主要是在GC的STW阶段。如果是STW阶段，则会暂停当前的m，等到startTheWorld时，会将所有的p唤醒。</p>
@@ -177,11 +216,43 @@
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">if gp &#x3D;&#x3D; nil &amp;&amp; gcBlackenEnabled !&#x3D; 0 &#123;</span><br><span class="line">	gp &#x3D; gcController.findRunnableGCWorker(_g_.m.p.ptr())</span><br><span class="line">	tryWakeP &#x3D; tryWakeP || gp !&#x3D; nil</span><br><span class="line">&#125;</span><br><span class="line">if gp &#x3D;&#x3D; nil &#123;</span><br><span class="line">	if _g_.m.p.ptr().schedtick%61 &#x3D;&#x3D; 0 &amp;&amp; sched.runqsize &gt; 0 &#123;</span><br><span class="line">		lock(&amp;sched.lock)</span><br><span class="line">		gp &#x3D; globrunqget(_g_.m.p.ptr(), 1)</span><br><span class="line">		unlock(&amp;sched.lock)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line">if gp &#x3D;&#x3D; nil &#123;</span><br><span class="line">	gp, inheritTime &#x3D; runqget(_g_.m.p.ptr())</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 <p>上述代码，基本上也就是3块逻辑：优先执行gc的g、其次查看是否需要获取全局列表、最后查看当前p的列表。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">if gp.lockedm !&#x3D; 0 &#123;</span><br><span class="line">	&#x2F;&#x2F; Hands off own p to the locked m,</span><br><span class="line">	&#x2F;&#x2F; then blocks waiting for a new p.</span><br><span class="line">	startlockedm(gp)</span><br><span class="line">	goto top</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">execute(gp, inheritTime)</span><br></pre></td></tr></table></figure>
+
+<p>最后针对绑定的g进行特殊处理。否则就执行<code>execute</code>方法</p>
+<blockquote>
+<p>会从哪些地方去获取g？优先级是什么？</p>
+</blockquote>
+<h4 id="Execute函数"><a href="#Execute函数" class="headerlink" title="Execute函数"></a>Execute函数</h4><p>该函数主要功能切换当前上下文至指定的g中，具体源码如下，没有特别的逻辑，都是将g属性初始化一遍。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">func execute(gp *g, inheritTime bool) &#123;</span><br><span class="line">	_g_ :&#x3D; getg()</span><br><span class="line"></span><br><span class="line">	_g_.m.curg &#x3D; gp</span><br><span class="line">	gp.m &#x3D; _g_.m</span><br><span class="line">	casgstatus(gp, _Grunnable, _Grunning)</span><br><span class="line">	gp.waitsince &#x3D; 0</span><br><span class="line">	gp.preempt &#x3D; false</span><br><span class="line">	gp.stackguard0 &#x3D; gp.stack.lo + _StackGuard</span><br><span class="line">	if !inheritTime &#123;</span><br><span class="line">		_g_.m.p.ptr().schedtick++</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	gogo(&amp;gp.sched)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>而<code>gogo</code>方法是真正在汇编层切换寄存器的逻辑，传入的sched就是这个g的上下文信息，包含4个寄存器信息，代码如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">TEXT runtime·gogo(SB), NOSPLIT, $16-8</span><br><span class="line">	MOVQ	buf+0(FP), BX		&#x2F;&#x2F; gobuf</span><br><span class="line">	MOVQ	gobuf_g(BX), DX</span><br><span class="line">	MOVQ	0(DX), CX		&#x2F;&#x2F; make sure g !&#x3D; nil</span><br><span class="line">	get_tls(CX)</span><br><span class="line">	MOVQ	DX, g(CX)		&#x2F;&#x2F; 保存g至tls中</span><br><span class="line">	&#x2F;&#x2F; 恢复sp，ax，dx，bp寄存器</span><br><span class="line">	MOVQ	gobuf_sp(BX), SP	&#x2F;&#x2F; restore SP</span><br><span class="line">	MOVQ	gobuf_ret(BX), AX</span><br><span class="line">	MOVQ	gobuf_ctxt(BX), DX</span><br><span class="line">	MOVQ	gobuf_bp(BX), BP</span><br><span class="line">	&#x2F;&#x2F; 清空gobuf</span><br><span class="line">	MOVQ	$0, gobuf_sp(BX)	&#x2F;&#x2F; clear to help garbage collector</span><br><span class="line">	MOVQ	$0, gobuf_ret(BX)</span><br><span class="line">	MOVQ	$0, gobuf_ctxt(BX)</span><br><span class="line">	MOVQ	$0, gobuf_bp(BX)</span><br><span class="line">	MOVQ	gobuf_pc(BX), BX</span><br><span class="line">	JMP	BX</span><br></pre></td></tr></table></figure>
+
+<h4 id="Goexit函数"><a href="#Goexit函数" class="headerlink" title="Goexit函数"></a>Goexit函数</h4><p>goexit方法是当当前线程执行完毕后执行的析构方法，设置的方法为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">func gostartcallfn(gobuf *gobuf, fv *funcval) &#123;</span><br><span class="line">    var fn unsafe.Pointer</span><br><span class="line">    if fv !&#x3D; nil &#123;</span><br><span class="line">        fn &#x3D; unsafe.Pointer(fv.fn)</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        fn &#x3D; unsafe.Pointer(funcPC(nilfunc))</span><br><span class="line">    &#125;</span><br><span class="line">    gostartcall(gobuf, fn, unsafe.Pointer(fv))</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; adjust Gobuf as if it executed a call to fn with context ctxt</span><br><span class="line">&#x2F;&#x2F; and then did an immediate gosave.</span><br><span class="line">func gostartcall(buf *gobuf, fn, ctxt unsafe.Pointer) &#123;</span><br><span class="line">    sp :&#x3D; buf.sp</span><br><span class="line">    if sys.RegSize &gt; sys.PtrSize &#123;</span><br><span class="line">        sp -&#x3D; sys.PtrSize</span><br><span class="line">        *(*uintptr)(unsafe.Pointer(sp)) &#x3D; 0</span><br><span class="line">    &#125;</span><br><span class="line">    sp -&#x3D; sys.PtrSize</span><br><span class="line">    *(*uintptr)(unsafe.Pointer(sp)) &#x3D; buf.pc &#x2F;&#x2F; 注意这里，这个，这里的 buf.pc 实际上是 goexit 的 pc</span><br><span class="line">    buf.sp &#x3D; sp</span><br><span class="line">    buf.pc &#x3D; uintptr(fn)</span><br><span class="line">    buf.ctxt &#x3D; ctxt</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在 gostartcall 中把 newproc1 时设置到 buf.pc 中的 goexit 的函数地址放到了 goroutine 的栈顶，然后重新设置 buf.pc 为 goroutine 函数的位置。这样做的目的是为了在执行完任何 goroutine 的函数时，通过 RET 指令，都能从栈顶把 sp 保存的 goexit 的指令 pop 到 pc 寄存器，效果相当于任何 goroutine 执行函数执行完之后，都会去执行 runtime.goexit，完成一些清理工作后再进入 schedule。</p>
+<p>当前流程只剩下<code>goexit-&gt;goexit1-&gt;goexit0</code>，代码还算可读，直接上代码：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">TEXT runtime·goexit(SB),NOSPLIT,$0-0</span><br><span class="line">	BYTE	$0x90	&#x2F;&#x2F; NOP</span><br><span class="line">	CALL	runtime·goexit1(SB)	&#x2F;&#x2F; does not return</span><br><span class="line">	&#x2F;&#x2F; traceback from goexit1 must hit code range of goexit</span><br><span class="line">	BYTE	$0x90	&#x2F;&#x2F; NOP</span><br><span class="line"></span><br><span class="line">	... ... </span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; Finishes execution of the current goroutine.</span><br><span class="line">func goexit1() &#123;</span><br><span class="line">	if raceenabled &#123;</span><br><span class="line">		racegoend()</span><br><span class="line">	&#125;</span><br><span class="line">	if trace.enabled &#123;</span><br><span class="line">		traceGoEnd()</span><br><span class="line">	&#125;</span><br><span class="line">	mcall(goexit0)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在代码来看，goexit和goexit1目标只是切换到g0协程中并执行<code>goexit0</code>中，第一部分，大部分都是变量清空，并清空当前的g状态置为_Gdead。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">func goexit0(gp *g) &#123;</span><br><span class="line">	_g_ :&#x3D; getg()</span><br><span class="line"></span><br><span class="line">	casgstatus(gp, _Grunning, _Gdead)</span><br><span class="line">	if isSystemGoroutine(gp, false) &#123;</span><br><span class="line">		atomic.Xadd(&amp;sched.ngsys, -1)</span><br><span class="line">	&#125;</span><br><span class="line">	gp.m &#x3D; nil</span><br><span class="line">	locked :&#x3D; gp.lockedm !&#x3D; 0</span><br><span class="line">	gp.lockedm &#x3D; 0</span><br><span class="line">	_g_.m.lockedg &#x3D; 0</span><br><span class="line">	gp.preemptStop &#x3D; false</span><br><span class="line">	gp.paniconfault &#x3D; false</span><br><span class="line">	gp._defer &#x3D; nil &#x2F;&#x2F; should be true already but just in case.</span><br><span class="line">	gp._panic &#x3D; nil &#x2F;&#x2F; non-nil for Goexit during panic. points at stack-allocated data.</span><br><span class="line">	gp.writebuf &#x3D; nil</span><br><span class="line">	gp.waitreason &#x3D; 0</span><br><span class="line">	gp.param &#x3D; nil</span><br><span class="line">	gp.labels &#x3D; nil</span><br><span class="line">	gp.timer &#x3D; nil</span><br><span class="line">	if gcBlackenEnabled !&#x3D; 0 &amp;&amp; gp.gcAssistBytes &gt; 0 &#123;</span><br><span class="line">		scanCredit :&#x3D; int64(gcController.assistWorkPerByte * float64(gp.gcAssistBytes))</span><br><span class="line">		atomic.Xaddint64(&amp;gcController.bgScanCredit, scanCredit)</span><br><span class="line">		gp.gcAssistBytes &#x3D; 0</span><br><span class="line">	&#125;</span><br><span class="line">	dropg()</span><br></pre></td></tr></table></figure>
+
+<p>清空完自身的g后，主要就剩下清理其他的信息，例如：写入g的队列中，清空m，进入调度。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">func goexit0(gp *g) &#123;</span><br><span class="line">	... ...</span><br><span class="line">	gfput(_g_.m.p.ptr(), gp)</span><br><span class="line">	if locked &#123;</span><br><span class="line">		if GOOS !&#x3D; &quot;plan9&quot; &#123; &#x2F;&#x2F; See golang.org&#x2F;issue&#x2F;22227.</span><br><span class="line">			gogo(&amp;_g_.m.g0.sched)</span><br><span class="line">		&#125; else &#123;</span><br><span class="line">			_g_.m.lockedExt &#x3D; 0</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	schedule()</span><br></pre></td></tr></table></figure>
+
+<h2 id="待办事项"><a href="#待办事项" class="headerlink" title="待办事项"></a>待办事项</h2><ul>
+<li>定时执行逻辑</li>
+<li>锁定线程逻辑</li>
+<li>tryWakeP逻辑</li>
+<li>findrunnable逻辑</li>
+<li>mcall、notesleep逻辑</li>
+<li>inheritTime功能</li>
+</ul>
 
       
     </div>
     <footer class="article-footer">
-      <a data-url="http://artikell.github.io/2020/07/08/golang-dispatch/" data-id="ckceyr0ae00011ruy7ibp7w7n" class="article-share-link">Share</a>
+      <a data-url="http://artikell.github.io/2020/07/08/golang-dispatch/" data-id="ckceyz3dl000136uyh4cf6lru" class="article-share-link">Share</a>
       
       
     </footer>
@@ -230,7 +301,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="http://artikell.github.io/2020/07/08/hello-world/" data-id="ckceyr09p00001ruy9y5k8azc" class="article-share-link">Share</a>
+      <a data-url="http://artikell.github.io/2020/07/08/hello-world/" data-id="ckceyz3cu000036uy9henei4n" class="article-share-link">Share</a>
       
       
     </footer>
@@ -269,6 +340,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2020/07/12/golang-lockg/">Golang-Lockg学习</a>
+          </li>
         
           <li>
             <a href="/2020/07/08/golang-dispatch/">Golang调度讲解</a>
