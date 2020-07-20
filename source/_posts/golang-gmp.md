@@ -199,8 +199,86 @@ func mstart() {
 
 #### 获取Gorountine
 
+在获取gorountine流程中，可以分为3部分：
+1. 若当前p不存在g，或者调度计数满足61次，则从全局中获取g运行
+2. 产生从p本地队列中获取g
+3. 本地和全局都获取不到时，则在`findrunable`方法中阻塞获取g
 
+```
+func schedule() {
+    ... ... 
+top:
+	if gp == nil {
+		if _g_.m.p.ptr().schedtick%61 == 0 && sched.runqsize > 0 {
+			lock(&sched.lock)
+			gp = globrunqget(_g_.m.p.ptr(), 1)
+			unlock(&sched.lock)
+		}
+	}
+	if gp == nil {
+		gp, inheritTime = runqget(_g_.m.p.ptr())
+		// We can see gp != nil here even if the M is spinning,
+		// if checkTimers added a local goroutine via goready.
+	}
+	// 如果实在没找到，那就强行找一个可用的
+	if gp == nil {
+		gp, inheritTime = findrunnable() // blocks until work is available
+	}
+    execute(gp, inheritTime)
+}
+```
 
+##### globrunqget方法
+在从全局队列中获取g时，会从全局队列中获取g，并同时迁移`1/len(allp)`个数的g到本地队列中。
+```
+func globrunqget(_p_ *p, max int32) *g {
+	n := sched.runqsize/gomaxprocs + 1
+	if n > int32(len(_p_.runq))/2 {
+		n = int32(len(_p_.runq)) / 2
+	}
+
+	sched.runqsize -= n
+
+	gp := sched.runq.pop()
+	n--
+	for ; n > 0; n-- {
+		gp1 := sched.runq.pop()
+		runqput(_p_, gp1, false)
+	}
+	return gp
+}
+```
+
+##### runqget方法
+而在获取本地队列g的时候，优先会尝试获取`runnext`字段的g，在从`runq`中获取头部的g对象。当然由于`runq`是通过循环队列实现，所以gp是通过下标取余获取。
+```
+func runqget(_p_ *p) (gp *g, inheritTime bool) {
+	for {
+		next := _p_.runnext
+		if next == 0 {
+			break
+		}
+		if _p_.runnext.cas(next, 0) {
+			return next.ptr(), true
+		}
+	}
+
+	for {
+		h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with other consumers
+		t := _p_.runqtail
+		if t == h {
+			return nil, false
+		}
+		gp := _p_.runq[h%uint32(len(_p_.runq))].ptr()
+		if atomic.CasRel(&_p_.runqhead, h, h+1) { // cas-release, commits consume
+			return gp, false
+		}
+	}
+}
+```
+##### findrunnable方法
+
+`findrunnable`方法会不仅仅
 
 ## 调度工具
 
