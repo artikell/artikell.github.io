@@ -278,7 +278,32 @@ func runqget(_p_ *p) (gp *g, inheritTime bool) {
 ```
 ##### findrunnable方法
 
-`findrunnable`方法会不仅仅
+由于前2个方法实在获取不到可运行的g，所以在`findrunnable`方法中会不断的在各个可能存在可运行g的地方查询。具体的查询流程如下：
+1. 检查finalizer是否存在析构对象
+2. 检查本地对象是否存在可用g
+3. 查询全局队列是否存在可用g
+4. 非阻塞检查netpoll
+5. 如果大家都空闲中，或者自旋的m超过了忙碌的p，则进入强制查询阶段
+6. 再不济，随机4次去其他的p中窃取g
+
+上述流程实在找不到，m就不在持有p，然后开始特殊判断阶段。m开始循环判断是否存在可运行的g。判断区域还是从全局队列中、所有p的本地队列中以及netpoll三个方面。最终如果实在获取不到，则休眠当前m，等待有可用的p来唤醒。
+
+
+#### 执行Gorountine
+
+获取到可执行的g之后，就需要调用`runtime.execute`方法，主要针对g做一些变量赋值：
+```
+	casgstatus(gp, _Grunnable, _Grunning)
+	gp.waitsince = 0
+	gp.preempt = false
+	gp.stackguard0 = gp.stack.lo + _StackGuard
+	if !inheritTime {
+		_g_.m.p.ptr().schedtick++
+	}
+	_g_.m.curg = gp
+	gp.m = _g_.m
+```
+赋值完后，会调用`runtime.gogo`方法进行协程的上下文切换，将原有的g0协程，切换至gp协程。
 
 ## 调度工具
 
