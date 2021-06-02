@@ -145,6 +145,375 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/02/java-gc-2/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Skyfire Lee">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Artikell">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/06/02/java-gc-2/" class="post-title-link" itemprop="url">关于JVM的垃圾收集（2）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2021-06-02 09:06:14 / 修改时间：09:06:39" itemprop="dateCreated datePublished" datetime="2021-06-02T09:06:14+08:00">2021-06-02</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>关于垃圾收集，上文已经提到了2类算法：引用计数、可达性计算。而针对可达性算法，为了提高垃圾收集效率，将内存分为新生代和老年代，并演化出3类假说：大部分对象朝生夕灭、熬过多次的垃圾收集越难消亡、跨代引用相对于同代引用是极少的。</p>
+<p>在这些基础上，java本身也会对gc进行分类处理，而非每次都是全内存进行垃圾清理。其中的分类为Minor GC、Major GC，分别为新生代GC和老年代GC，Mixed GC，表示对新生代和部分老年代的GC、Full GC，收集整个Java堆和方法区的垃圾。</p>
+<p>而在不同的GC阶段，自然也有不同的实现方式</p>
+<h2 id="标记清理算法"><a href="#标记清理算法" class="headerlink" title="标记清理算法"></a>标记清理算法</h2><p>所谓标记清理当然分为标记和清理2个阶段：标记出所有需要收集的对象，而后统一进行回收。标记阶段负责判断垃圾，而清理阶段则直接处理相关垃圾对象。</p>
+<p>该方法的实际实现便是Golang中的三色标记。其主要确定在于执行效率不稳定，若存在大量对象，且大部分对象都需要回溯，则需要进行大规模的标记和清理动作，其次是内存空间碎片化问题，标记清理会导致大量的空间碎片，而当分配大对象时找不到足够的连续内存，则会提前触发下一次垃圾回收。</p>
+<h2 id="标记复制算法"><a href="#标记复制算法" class="headerlink" title="标记复制算法"></a>标记复制算法</h2><p>为了解决标记清理算法面对大量可回收对象时执行效率低的问题，便产生出了半区复制的GC算法。原理是将可用内存按容量划分为大小相等的两块，每次只使用其中一块，当一块用完后将存活的对象复制到另外一块上面。而后再直接将旧有的一半空间清理。</p>
+<p>这类算法缺点则是会产生大量的内存间复制的开销，同时空间浪费相对比较严重。而在IBM公司的实验中发现，新生代98%的对象都熬不过第一轮收集，那也可以佐证并不需要进行半区1：1的空间分配。</p>
+<p>于是也就产生了经典的8：1：1的分区关系，划分为Eden（8）、Survivor0（1）、Survivor1（1），在对象申请时，只使用Eden+Survivor0区域，而当进行GC时，就将对象复制到Survivor1区域，并直接清空内存。这样只有10%的空间会浪费，同时，当存活的对象大于10%，那就需要启用老年代空间来存放对象。</p>
+<h2 id="标记整理算法"><a href="#标记整理算法" class="headerlink" title="标记整理算法"></a>标记整理算法</h2><p>标记复制算法的问题则是在存活对象过多的情况下，需要进行较多的对象复制操作，效率极低。同时，如果出现100%的对象存活，那还需要额外的空间来保证算法稳定。那针对老年代的对象特征，那就是需要新的一类算法来保证空间的利用率。</p>
+<p>而标记整理便是当前的实际算法，这算法与标记清理的差异在于，前者在回收后需要对存活的对象进行移动。</p>
+<p>移动对象的确定在于，需要小心的维护对象的连接关系，保证在移动的过程中，不会直接导致进程崩坏。而如果不进行整理，那么空间碎片化会导致需要类似的内存分配器和访问器来解决。</p>
+<p>是否移动对象在实践中都存在利弊，那考虑整体老年代的特征而言，并不需要频繁的GC，更多的是空间利用率的提升，那选择移动对象那必然是较优的选择。</p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/02/java-gc-1/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Skyfire Lee">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Artikell">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/06/02/java-gc-1/" class="post-title-link" itemprop="url">关于JVM的垃圾收集（1）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2021-06-02 09:05:43 / 修改时间：09:06:08" itemprop="dateCreated datePublished" datetime="2021-06-02T09:05:43+08:00">2021-06-02</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>在java中，存在大量的设计概念，在概念中衍生出了很多理论基础，这类的学习对其他语言的深入理解有很大的帮助，因为本身java就是一个很大的知识库，于是，在飞机上，抽空下载了《深入理解JAVA虚拟机》，并学习了其中几张，发现了很多知识点在之前学习Golang时常常是没有提及的，也坚定了后续继续深入阅读java书籍的目标。</p>
+<h3 id="关于垃圾收集"><a href="#关于垃圾收集" class="headerlink" title="关于垃圾收集"></a>关于垃圾收集</h3><p>垃圾收集主要还是针对堆内存中的对象，因为在栈中的对象，是随着线程的执行，会自动消逝，而堆中的对象，则是没有维护上级，对于C、C++来说，需要开发者自身通过free方法来释放，也衍生出了内存池的概念，而在更多编程语言中，例如最初的lisp、近期的golang，为了开发效率，不再提倡手动维护这类对象，而且交由应用程序运行时来管理对象的生命周期，这样也可以避免出现大量对象释放后，导致进程core的bug。</p>
+<p>而在整体的垃圾收集算法中，核心还是，如何判断一个对象是否已死？最初的死亡定义是：当一个对象不再有另一个对象引用时，便认为其已死亡。这样也就衍生出引用计数算法，这类算法在最初的PHP有实现，包括在redis中也是有简易的实现。该算法原理简单，效率高，对于简单场景是十分适用，但是该算法并解决不了最困难的问题：循环引用。</p>
+<p>所谓循环引用，就是2个对象互相引用，但是不在被其他对象引用，按理说，这类孤岛对象，算是僵尸对象，有人引用，但是不会再被使用，所以也应该被当做垃圾清理。而针对这类case，也衍生出了可达性分析算法，通过一个GC Roots的根对象来进行广度优先搜索，最终判断对象是否可达。这样也就可以解决循环引用的问题，而针对可达性分析算法，也衍生出各种各样的实现，其中也就包括golang的三色标记、php的n色标记、java的分代算法。</p>
+<h2 id="分代垃圾收集算法"><a href="#分代垃圾收集算法" class="headerlink" title="分代垃圾收集算法"></a>分代垃圾收集算法</h2><p>分代收集的核心理论是建立2个假说：</p>
+<p>1）弱分代假说（Weak Generational Hypothesis）：绝大多数对象都是朝生夕灭的。</p>
+<p>2）强分代假说（Strong Generational Hypothesis）：熬过越多次垃圾收集过程的对象就越难以消亡。</p>
+<p>因此，在java中，会分开新生代和老年代2块区域，针对新生代而言，大部分的对象都在垃圾收集时直接消亡，而剩余的对象逐步晋升为老年代中。这样就可以针对新生代和老年代进行分别垃圾清理。但中间还存在一个问题是当一个新生代对象被老年代引用时，原本只需要在新生代做垃圾收集算法，却必须要同时对老年代进行，这样完全没有达到分代的效果。于是，又引入了一个假说：</p>
+<p>3）跨代引用假说（Intergenerational Reference Hypothesis）：跨代引用相对于同代引用来说仅占极少数。</p>
+<p>即存在互相引用的2个对象，最终肯定是同时生存、死亡，所以，应该同时晋升为老年代，这样跨代的问题便消失了。</p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/02/level-db-chan/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Skyfire Lee">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Artikell">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/06/02/level-db-chan/" class="post-title-link" itemprop="url">关于LevelDB中的管道</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2021-06-02 09:04:57 / 修改时间：09:05:22" itemprop="dateCreated datePublished" datetime="2021-06-02T09:04:57+08:00">2021-06-02</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>在开源项目<a href="https://github.com/syndtr/goleveldb中，存在大量的管道通信，而没有使用类似于锁之类的操作，在写法上是一件特别麻烦的事情。不过这也是项目高性能的一大原因。" target="_blank" rel="noopener">https://github.com/syndtr/goleveldb中，存在大量的管道通信，而没有使用类似于锁之类的操作，在写法上是一件特别麻烦的事情。不过这也是项目高性能的一大原因。</a></p>
+<h2 id="管道汇总"><a href="#管道汇总" class="headerlink" title="管道汇总"></a>管道汇总</h2><h4 id="写相关管道"><a href="#写相关管道" class="headerlink" title="写相关管道"></a>写相关管道</h4><p>writeMergeC/writeMergedC</p>
+<p>这是一对通信方式，当写入时，判断writeMergeC是能够写入，能写入表示抢到了锁操作，并继续往下执行，等待拿到writeMergedC消息，说明自己的写入已经被人合并，并不需要处理。</p>
+<p>当然如果当前处理未成功，则会继续往下处理，由另外一个协程进行合并操作。</p>
+<p>writeLockC</p>
+<p>这个管道和上述的writeMerge是并集操作，当写入成功该管道，则认为抢锁成功，继续往下执行写入操作。当写入完成后，则会释放锁资源。</p>
+<p>writeAckC</p>
+<p>ack的管道则是表示当前的操作结果，前2者表示的当前处理流程是否成功。</p>
+<p>三者使用了管道来完成了一个队列的功能</p>
+<h3 id="压缩相关管道"><a href="#压缩相关管道" class="headerlink" title="压缩相关管道"></a>压缩相关管道</h3><p>tcompCmdC</p>
+<p>该管道表示写入一个cCmd，用于触发压缩操作，这个是由于压缩是一个单独的协程来循环处理，所以需要管道通信</p>
+<p>tcompPauseC</p>
+<p>这个则是为了快速暂停table的压缩流程，通过管道传入一个管道来让压缩流程停止。当然，如果已经开始进行实际的压缩操作，这个流程是无法终止的。</p>
+<p>mcompCmdC</p>
+<p>这个管道和tcompCmdC同理，也是用于触发压缩操作，只不过，这个操作是用于mem落入table文件时触发。</p>
+<h2 id="错误相关管道"><a href="#错误相关管道" class="headerlink" title="错误相关管道"></a>错误相关管道</h2><p>compErrC\compPerErrC\compErrSetC</p>
+<p>这三者构成了一个错误升级的结构，在压缩时，如果出现异常，则会写入compErrSetC，</p>
+<p>而如果当前compErrSetC管道堵住，且已经有compPerErrC产生，那直接panic，主要是因为compPerErrC是由于多次的compErrSetC错误导致写入。</p>
+<p>当然，如果compErrSetC成功过一次，则会降级等待，否则连续失败，且compErrC一直没人处理，则表示错误无法处理，并需要终止服务。</p>
+<p>closeC</p>
+<p>这个管道则是在db调用关闭操作时触发，在等待操作中都有监听。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>可以看出，Golang管道不仅仅是一个通信工具，还能实现各类的加锁操作，包括锁升级。</p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/02/chaos_engineering/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Skyfire Lee">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Artikell">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/06/02/chaos_engineering/" class="post-title-link" itemprop="url">关于混沌工程的理解</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2021-06-02 09:04:16 / 修改时间：09:04:42" itemprop="dateCreated datePublished" datetime="2021-06-02T09:04:16+08:00">2021-06-02</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>混沌工程一直在我心中是一个模糊的概念，摘要百度百科的解释：通过一系列可控的实验和执行实验的原则，混沌工程将揭 示出分布式系统中随时发生的各类事件是如何逐步导致系统整体不可用的。</p>
+<p>在滴滴内部对应的便是放火系统，其中便有了如何放火、防火、监控等各类方法，以在执行混沌操作时，对线上业务影响最少。</p>
+<h2 id="概要"><a href="#概要" class="headerlink" title="概要"></a>概要</h2><p>混沌工程是一个主动发现系统中脆弱点的整套方法论，所谓方法论，就是关于人们认识世界、改造世界的方法的理论。其目标是提高系统对不确定事件的抵御能力。</p>
+<p>但这并非易事，首先所有系统都是足够复杂，这就会导致工程未来演练故障时也需要足够复杂，而在本来复杂的系统中进行改动，这本书就是一个风险极高的事情。</p>
+<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>时代背景的主要原因是系统架构在逐步演进，从服务集群到分布式系统，开始微服务化、容器化、上云。服务之间开始逐步隔离，而用户需求变更的更加频繁，复杂化、多样性、快速化，促使了版本迭代不断增速：CICD、敏捷开发、devops、ABtest。</p>
+<p>所有的变更最终肯定会反映在系统复杂度上的增加，频繁的变更最大的挑战便是稳定性，如何使系统在频繁变更的过程中，继续保持自身的扩展性、稳定性、弹性能力、容错灾备能力，便是当今各公司需要解决的问题。</p>
+<p>混沌工程中，最好的手段，便是演练，通过故障注入的方式模拟线上异常，提前预警，避免大规模事故的发现。</p>
+<h2 id="实施"><a href="#实施" class="headerlink" title="实施"></a>实施</h2><h3 id="因素"><a href="#因素" class="headerlink" title="因素"></a>因素</h3><p>既然是复杂系统的稳定性工具，那还是需要考虑用户在使用稳定性工具时的感受，保证工具拥有可靠性、安全性、可扩展性、可定制化、可伸缩性、可维护性、用户体验等。</p>
+<h3 id="维度"><a href="#维度" class="headerlink" title="维度"></a>维度</h3><p>用故障注入作为手段来实施工程，那我们就需要从系统稳定性开始考虑如何保证影响可控的情况下如何正常开展演练。</p>
+<p>1）建立稳定状态的假设（清晰可衡量的指标）</p>
+<p>2）用多样的生产事件做验证（多样性降低误差）</p>
+<p>3）在生产环境做验证（真实场景）</p>
+<p>4）自动化开展实验（持续运行）</p>
+<p>5）控制最小化爆炸半径（影响范围）</p>
+<p>而，做到这么几点才能保证混沌工程能够正常的推广下去。</p>
+<h3 id="经验"><a href="#经验" class="headerlink" title="经验"></a>经验</h3><p>混沌工程的考虑维度我们已经列出来了。但是如何推广工程又是另外一套方法论，因为如何把事做好本身就是很难的事情。</p>
+<p>所以，在做事之前，考虑好影响，提前建立预期，对于混沌工程而言，总会不断的和故障打交道，于是就需要建立面向失败设计和拥抱失败的技术文化，让大家能够接受失败。同时先从简单的场景开始尝试，逐渐增加组织对系统的信心</p>
+<p>其实，工程需要一个实施目标，评估整体工程推进的情况，</p>
+<p>在前期：需要对历史故障的复现率以及解决率，确保故障改进的有效性；<strong>中期</strong>：提高监控发现率，验证故障发现能力的全面性和监控的完备程度；<strong>后期</strong>：故障的“发现-定位-恢复”市场这种综合性指标；</p>
+<p>最终希望是能达到在控制风险的前提下不断提升混沌工程效率<a href="https://zhuanlan.zhihu.com/p/354401594" target="_blank" rel="noopener">https://zhuanlan.zhihu.com/p/354401594</a>)</p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/02/rpc-monitor/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Skyfire Lee">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Artikell">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/06/02/rpc-monitor/" class="post-title-link" itemprop="url">总结RPC高可用实践之路</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2021-06-02 09:03:17 / 修改时间：09:03:35" itemprop="dateCreated datePublished" datetime="2021-06-02T09:03:17+08:00">2021-06-02</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>RPC的高可用存在几个方向：Load Balancing负载均衡、Rate Limiting限流、Load Shedding熔断、Graceful Degradation优雅退化、Latency and Deadlines延迟和死线</p>
+<h3 id="Load-Balancing负载均衡"><a href="#Load-Balancing负载均衡" class="headerlink" title="Load Balancing负载均衡"></a>Load Balancing负载均衡</h3><p>负载均衡核心目标其实主要是俩类：首先是减少负载、其次是提高可用性。</p>
+<p>减少负载首先是分摊流量、并做到均匀分发，而可用性则是减少错误数、更低的延迟、并支持弹性。</p>
+<p>而在这目标背后有很多障碍，对于每个请求的处理成本不同，第二是物理环境有差异，包括CPU性能差异以及邻居间互相影响。包括性能因素，中间例如JIT的预热、批量任务、大型GC导致性能出现问题。</p>
+<p>在解决这些背景的核心问题是活跃的请求数量不代表后端容量，CPU更好的处理的更多，而大集群最终退化成随机选择。而每个客户端的活跃请求不包括其他客户端发完一个后端的请求，导致容易缺少全局视角，且最闲的轮询容易引发惊群效应。</p>
+<h3 id="方案"><a href="#方案" class="headerlink" title="方案"></a>方案</h3><p>用于解决负载均衡有各种各样的方案设计</p>
+<p>P2C方案，作为一个实现简单、负载均衡器的CPU成本低、请求分布好、O(1)的复杂度。<strong>Power of Two Choices</strong>方式是我们常见的做法。比如说现在有多个机房，因为线上的集群是多个，比如100个机器一个集群，我们正常把20个放到一个机房，一般要5个机房，就可以做到同城的多机房容灾。</p>
+<p>对于这种情况以前的做法是需要在配置里面加zone，弄清楚这个机器的节点属于哪个zone，做一些复杂的配置去管理这个请求该去哪儿访问，通过这种方式就能比较好的进行规避。</p>
+<p>比如说图里的A节点访问其它节点模拟了2ms的延迟，它可以比较好的把更多的请求放到本机房里，同时也确保本机房请求过多或延迟过高时会动态调度到其他的机房，这是一个动态的平衡。这里放了三个节点演示，通过数学的方式比较好的把多机房balance解决掉，而不需要用复杂的配置来完成这件事。</p>
+<p>基于client统计指标调度</p>
+<p>在client侧可以通过采集三类信息来进行均衡判断：Health、连接或特定的错误比率，Latency：请求的耗时，Inflight：当前正在运行的请求数量。通过三者来判断当前的server端是否正常已经进行相关的权重调节。</p>
+<p>同时还存在基于server统计指标进行调度，其中利用类似于Actively：利用healthcheck同步；Passively：每次rpc response同步，CPU：百ms内的Moving Average 这类指标供均衡判断。</p>
+<p>同时，为了保证数据的可用性，需要对相关计算分数进行衰减处理。</p>
+<h3 id="影响"><a href="#影响" class="headerlink" title="影响"></a>影响</h3><p>负载均衡的策略执行后，很容易出现的影响是服务器之间的流量差异逐步放大，较慢的服务器接收的流量更少，从而容易导致abtest实验准确性，同时问题机器更难被监控发现</p>
+<h2 id="相关链接"><a href="#相关链接" class="headerlink" title="相关链接"></a>相关链接</h2><p><a href="https://zhuanlan.zhihu.com/p/354401594" target="_blank" rel="noopener">流量洪峰中如何设计弹性微服务架构 - 知乎 (zhihu.com)</a></p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/02/level-db-demo/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -614,198 +983,11 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2020/07/08/golang-dispatch/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="Skyfire Lee">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="Artikell">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2020/07/08/golang-dispatch/" class="post-title-link" itemprop="url">Golang调度讲解</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2020-07-08 15:38:21" itemprop="dateCreated datePublished" datetime="2020-07-08T15:38:21+08:00">2020-07-08</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2021-06-02 01:32:05" itemprop="dateModified" datetime="2021-06-02T01:32:05+08:00">2021-06-02</time>
-              </span>
-
-          
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>Golang调度是runtime中的核心部分，要说涉及到的东西，从基本的线程协程切换、GC的STW，到锁的暂停，都有相关涉猎。今天请个假休息一下，有空整理整理最近看的调度知识。</p>
-<h2 id="调度基本知识"><a href="#调度基本知识" class="headerlink" title="调度基本知识"></a>调度基本知识</h2><h3 id="进程、线程和协程"><a href="#进程、线程和协程" class="headerlink" title="进程、线程和协程"></a>进程、线程和协程</h3><p>进程和线程的区别都不用说了，简单来说就是，最初，大佬们觉得，每个任务肯定都有独立的内存空间、句柄等等等。只要保证程序直接能够不互相干扰就行。</p>
-<p>当机器性能不断的提升，程序员们发现，我任务太多了，需要执行很久，但是并不需要那么多的空间。如果照原来的方法每个任务都分配空间就特别耗时和耗资源，于是决定在进程的基础上拆分出线程，你只负责执行任务就行了。</p>
-<p>按道理，线程已经足够轻量，大数据时代又来了。现在需要大量的碎片计算，就像请求一个hello world，执行的任务不耗时，但是频繁。这时候的线程切换就是一个问题，主要原因是，线程的切换需要切换至操作系统的内核态，不断地做内存的复制，页表的cache很容易就失效，耗时因此增加。</p>
-<p>程序员再次想起，只要尽可能的不做内核态的切换，就可以减少这样的风险。于是出现了用户态的线程，也就是协程。</p>
-<h3 id="并发模型"><a href="#并发模型" class="headerlink" title="并发模型"></a>并发模型</h3><p>大家在学习Golang源码中可以顺便思考一下，为什么是GMP模型？这就引出《七周七并发模型》书中的其他的并发模型：</p>
-<ul>
-<li>通过无变量的函数式编程实现并发，是无锁并发的一种模型；</li>
-<li>Clojure对于状态和标识的分离，可以轻松实现内存事务模型；</li>
-<li>Erlang的Actor模型是容错性非常高的分布式并发模型；</li>
-<li>CSP模型是另一种分布式并发模型，被Go和Clojure采用；</li>
-<li>GPU的并行计算主要针对数据密集型计算的并行，搞游戏的一定要看；</li>
-<li>Hadoop和Storm分别适合超大数据量的批处理和流式处理。</li>
-</ul>
-<p>CSP（Communicating Sequential Processes）是由Tony Hoare在1978的论文上首次提出的。 它是处理并发编程的一种设计模式或者模型，指导并发程序的设计，提供了一种并发程序可实践的组织方法或者设计范式。通过此方法，可以减少并发程序引入的其它缺点，减少和规避并发程序的常见缺点和bug，并且可以被数学理论所论证。</p>
-<blockquote>
-<p>经典名言：Do not communicate by sharing memory; instead, share memory by communicating</p>
-</blockquote>
-<p>该模型主要的最终实现在于golang中的channel和goroutine。</p>
-<h3 id="GMP模型"><a href="#GMP模型" class="headerlink" title="GMP模型"></a>GMP模型</h3><p>在golang实现之前，其实解决线程切换开销大的问题可能有各种各样的方式。nginx中通过epollo来进行事件管理，还有python中的yield进行用户态的手动切换。这些都属于非抢占式的，核心问题就是如果中间出现过量的超时操作，很容易就会导致进程阻塞。</p>
-<p>而golang的GMP模型中参考操作系统中的线程切换制作了sysmon线程用于做协程的抢占操作。</p>
-<p>在GMP模型特殊之处也是在于中间P层的存在，在1.1之前，是不存在P层。这就导致了，G其实是挂载在全局的链表中。每次切换协程都会抢占一个全局锁，于是给GM中增加了一个P层。</p>
-<h3 id="特殊的线程、协程"><a href="#特殊的线程、协程" class="headerlink" title="特殊的线程、协程"></a>特殊的线程、协程</h3><p>在golang中，存在2个特殊的线程：sysmon、templateThread。前者主要用于实现golang的抢占式调度，后者则是作为fork线程时使用的模板线程。</p>
-<p>同时还存在一个特殊的协程：signalG，功能也就是用于接收进程的信号。</p>
-<p>这3者可以单独讲解。本文主要讲解整体的正常线程调度流程。</p>
-<h2 id="进程启动"><a href="#进程启动" class="headerlink" title="进程启动"></a>进程启动</h2><h3 id="最初的入口和空间"><a href="#最初的入口和空间" class="headerlink" title="最初的入口和空间"></a>最初的入口和空间</h3><p>首先，golang的启动入口rt0_go（asm_arm64.s文件）。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line">	MOVW	R0, 8(RSP) &#x2F;&#x2F; argc</span><br><span class="line">	MOVD	R1, 16(RSP) &#x2F;&#x2F; argv</span><br><span class="line"></span><br><span class="line">	&#x2F;&#x2F; create istack out of the given (operating system) stack.</span><br><span class="line">	&#x2F;&#x2F; _cgo_init may update stackguard.</span><br><span class="line">	MOVD	$runtime·g0(SB), g</span><br><span class="line">	MOVD	RSP, R7</span><br><span class="line">	MOVD	$(-64*1024)(R7), R0</span><br><span class="line">	MOVD	R0, g_stackguard0(g)</span><br><span class="line">	MOVD	R0, g_stackguard1(g)</span><br><span class="line">	MOVD	R0, (g_stack+stack_lo)(g)</span><br><span class="line">	MOVD	R7, (g_stack+stack_hi)(g)</span><br><span class="line"></span><br><span class="line">    ... ...</span><br><span class="line">nocgo:</span><br><span class="line">	BL	runtime·save_g(SB)</span><br><span class="line">	&#x2F;&#x2F; update stackguard after _cgo_init</span><br><span class="line">	MOVD	(g_stack+stack_lo)(g), R0</span><br><span class="line">	ADD	$const__StackGuard, R0</span><br><span class="line">	MOVD	R0, g_stackguard0(g)</span><br><span class="line">	MOVD	R0, g_stackguard1(g)</span><br><span class="line"></span><br><span class="line">	&#x2F;&#x2F; set the per-goroutine and per-mach &quot;registers&quot;</span><br><span class="line">	MOVD	$runtime·m0(SB), R0</span><br><span class="line"></span><br><span class="line">	&#x2F;&#x2F; save m-&gt;g0 &#x3D; g0</span><br><span class="line">	MOVD	g, m_g0(R0)</span><br><span class="line">	&#x2F;&#x2F; save m0 to g0-&gt;m</span><br><span class="line">	MOVD	R0, g_m(g)</span><br><span class="line"></span><br><span class="line">	MOVW	8(RSP), R0	&#x2F;&#x2F; copy argc</span><br><span class="line">	MOVW	R0, -8(RSP)</span><br><span class="line">	MOVD	16(RSP), R0		&#x2F;&#x2F; copy argv</span><br><span class="line">	MOVD	R0, 0(RSP)</span><br></pre></td></tr></table></figure>
-
-<p>这段汇编其实不用特别讨论，主要做的就是初始化的一个流程：  </p>
-<ol>
-<li>赋值stack.lo和stack.hi属性</li>
-<li>保存g0对象</li>
-<li>设置m对象，包括m-&gt;g0、g0-&gt;m，做一个m0和g0的绑定</li>
-<li>复制argc和argv</li>
-</ol>
-<p>以上基本上就是一些属性的赋值，后续就是执行了一系列的初始化函数。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">BL	runtime·args(SB)</span><br><span class="line">BL	runtime·osinit(SB)</span><br><span class="line">BL	runtime·schedinit(SB)</span><br></pre></td></tr></table></figure>
-
-<p>这3个函数，不是特别影响调度流程，具体功能主要是对一些功能进行初始化，例如内存管理、信号、mp链表、GC等功能的初始化。</p>
-<p>在以上部分，现在基本上只存在一个m0代表主线程，一个g0代表主线程中的g0空间，还要一个signalG空间（并不在执行链表中），同时初始化了maxprocs个p，且在m0上面挂载了一个p对象。这时候，需要开始执行main函数，则需要一个新的g来执行方法。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">MOVD	$runtime·mainPC(SB), R0		&#x2F;&#x2F; entry</span><br><span class="line">MOVD	RSP, R7</span><br><span class="line">MOVD.W	$0, -8(R7)</span><br><span class="line">MOVD.W	R0, -8(R7)</span><br><span class="line">MOVD.W	$0, -8(R7)</span><br><span class="line">MOVD.W	$0, -8(R7)</span><br><span class="line">MOVD	R7, RSP</span><br><span class="line">BL	runtime·newproc(SB)</span><br></pre></td></tr></table></figure>
-
-<p><code>newproc</code>方法会将<code>runtime.main</code>函数作为入参传入，功能等同于<code>go runtime.main()</code>。而<code>newproc</code>方法具体功能主要就是创建一个g并插入当前的p中。</p>
-<p>到这一步为止，整个进程还是只存在一个线程，但是存在3个g：g0、signalG、mainG。之后，就开始执行一个调度流程。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">BL	runtime·mstart(SB)</span><br></pre></td></tr></table></figure>
-
-<h3 id="调度启动流程"><a href="#调度启动流程" class="headerlink" title="调度启动流程"></a>调度启动流程</h3><p>这是每个线程进入循环的入口。为什么这么说，代码如下：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">func newosproc(mp *m) &#123;</span><br><span class="line">	... ...</span><br><span class="line">	ret :&#x3D; clone(cloneFlags, stk, unsafe.Pointer(mp), unsafe.Pointer(mp.g0), unsafe.Pointer(funcPC(mstart)))</span><br></pre></td></tr></table></figure>
-<p>这就是创建一个线程的代码，印象中的线程创建是<code>thread_create</code>方法，底层最后还是调用的<code>clone</code>方法<a href="https://linux.die.net/man/2/clone" target="_blank" rel="noopener">参考</a>，所有golang自行封装了一个方法。而这个调用的最后一个方法就是<code>mstart</code>方法。</p>
-<p>进入<code>mstart</code>方法后，核心功能具体可以分为4部分：  </p>
-<ol>
-<li>osStack的判断</li>
-<li>stackguard的赋值</li>
-<li>mstart1的调用</li>
-<li>mexit方法，m的退出函数</li>
-</ol>
-<p>首先，先确定stackguard的功能，通过汇编指令，我们可以看到每个函数中都能有一段代码：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">TEXT runtime.main(SB) &#x2F;opt&#x2F;go&#x2F;src&#x2F;runtime&#x2F;proc.go</span><br><span class="line">        proc.go:113             0x430690        64488b0c25f8ffffff      mov rcx, qword ptr fs:[0xfffffff8]</span><br><span class="line">        proc.go:113             0x430699        483b6110                cmp rsp, qword ptr [rcx+0x10]</span><br><span class="line">        proc.go:113             0x43069d        0f86f9020000            jbe 0x43099c</span><br><span class="line">&#x3D;&gt;      proc.go:113             0x4306a3*       4883ec50                sub rsp, 0x50</span><br><span class="line">        ... ...</span><br><span class="line">        proc.go:113             0x43099c        e86f8b0200              call $runtime.morestack_noctxt</span><br><span class="line">        &lt;autogenerated&gt;:1       0x4309a1        e9eafcffff              jmp $runtime.main</span><br></pre></td></tr></table></figure>
-<p>第一行和第二行的具体功能分别是从TLS中获取当前的g对象、得到stackguard属性值。<br>这一整段的代码也就是表示如果当前的rsp比stackguard小的话，就认为是需要进行栈扩展。具体的值，也就是stack.lo+_StackGuard(896)。这一段就不具体叙述。</p>
-<p>第二个问题是为什么要判断osStack？这就是要知道什么情况下会出现osStack，也就是系统栈空间。核心代码如下：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">func allocm(_p_ *p, fn func()) *m &#123;</span><br><span class="line">    ... ...</span><br><span class="line">	if iscgo || GOOS &#x3D;&#x3D; &quot;solaris&quot; || GOOS &#x3D;&#x3D; &quot;illumos&quot; || GOOS &#x3D;&#x3D; &quot;windows&quot; || GOOS &#x3D;&#x3D; &quot;plan9&quot; || GOOS &#x3D;&#x3D; &quot;darwin&quot; &#123;</span><br><span class="line">		mp.g0 &#x3D; malg(-1)</span><br><span class="line">	&#125; else &#123;</span><br><span class="line">		mp.g0 &#x3D; malg(8192 * sys.StackGuardMultiplier)</span><br><span class="line">	&#125;</span><br></pre></td></tr></table></figure>
-<p>主要是当创建m的时候，m里面的g0的栈根据不同的系统或者cgo会创建系统的栈空间，否则就会使用heap中的空间。而在<code>mstart</code>方法中，判断是否为osStack，主要是需要判断，当前的栈是否可复用，如果是操作系统自动分配的栈是不在heap中的，无法回收管理，所以直接释放，若是在heap中，则需要进行回收操作。</p>
-<p>而<code>mexit</code>函数，功能主要也是做一系列的变量释放、回收操作。后续会引出相关功能。</p>
-<p>之后，方法会进入<code>mstart1</code>函数中</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line">func mstart1() &#123;</span><br><span class="line">	_g_ :&#x3D; getg()</span><br><span class="line"></span><br><span class="line">	if _g_ !&#x3D; _g_.m.g0 &#123;</span><br><span class="line">		throw(&quot;bad runtime·mstart&quot;)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	save(getcallerpc(), getcallersp())</span><br><span class="line">	asminit()</span><br><span class="line">	minit()</span><br><span class="line"></span><br><span class="line">	if _g_.m &#x3D;&#x3D; &amp;m0 &#123;</span><br><span class="line">		mstartm0()</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	if fn :&#x3D; _g_.m.mstartfn; fn !&#x3D; nil &#123;</span><br><span class="line">		fn()</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	if _g_.m !&#x3D; &amp;m0 &#123;</span><br><span class="line">		acquirep(_g_.m.nextp.ptr())</span><br><span class="line">		_g_.m.nextp &#x3D; 0</span><br><span class="line">	&#125;</span><br><span class="line">	schedule()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>首先，当前方法保存了上一个函数的pc和sp地址，功能也就是为了调用mexit方法，这里不做叙述。再之后就是2个初始化方法，<code>asminit</code>方法，在大部分操作系统中是没有函数体的，而<code>minit</code>函数中，具体做的事情是信号的初始化，也就是每个m都有自己的一个信号栈。这一部分不在此次学习范围内。</p>
-<p>而后续的<code>mstartm0</code>函数，功能具体描述大致有2部分：创建扩展的线程、初始化信号回调方法。俩者也就是只会在m0上面执行一次，不在调度功能内，暂时不做过多介绍。</p>
-<blockquote>
-<p>问：扩展线程的功能是干嘛的？</p>
-</blockquote>
-<p>再之后就会有<code>mstartfn</code>函数的执行，这一个函数具体会存在3种情况：sysmon抢占线程、templateThread模板线程、mspinning自旋方法。前2者在前面也提到过是2个特殊的线程，进入后便会不断的轮询等待。后者的自旋只是对当前的m做了一个自旋的标记。</p>
-<p>而后，针对非m0的m要进行一个p的绑定，m0为啥不需要呢？当然是因为m0在之前就已经绑定好了。</p>
-<h3 id="开始调度循环"><a href="#开始调度循环" class="headerlink" title="开始调度循环"></a>开始调度循环</h3><p>题目是调度循环，而代码中其实是没有一个for循环，最后的逻辑是进入了一个execute方法，那具体是如何实现循环？</p>
-<p>循环具体涉及到了几个函数的循环：<code>schedule-&gt;execute-&gt;goexit-&gt;goexit1-&gt;goexit0-&gt;schedule</code></p>
-<h4 id="Schedule函数"><a href="#Schedule函数" class="headerlink" title="Schedule函数"></a>Schedule函数</h4><p>函数的第一段逻辑，主要会判断当前m是否存在绑定的g，如果存在，则暂停当前m，而后执行<code>lockedg</code>。Why？这一段不是主流程，稍后再看。</p>
-<blockquote>
-<p>什么情况下会从暂停m？</p>
-</blockquote>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">if _g_.m.lockedg !&#x3D; 0 &#123;</span><br><span class="line">	stoplockedm()</span><br><span class="line">	execute(_g_.m.lockedg.ptr(), false) &#x2F;&#x2F; Never returns.</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>之后就是<code>gcwaiting</code>变量的判断，该变量不为0的情况主要是在GC的STW阶段。如果是STW阶段，则会暂停当前的m，等到startTheWorld时，会将所有的p唤醒。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">if sched.gcwaiting !&#x3D; 0 &#123;</span><br><span class="line">	gcstopm()</span><br><span class="line">	goto top</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>下面就是<code>runSafePointFn</code>这个名字，主要功能就是在GC前，需要打开所有的p读写屏障。而这个逻辑，就是简单的需要保证每个P都需要执行一遍。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">if pp.runSafePointFn !&#x3D; 0 &#123;</span><br><span class="line">	runSafePointFn()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>再之后就是执行当前p上挂载的定时器</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">checkTimers(pp, 0)</span><br></pre></td></tr></table></figure>
-
-<p>上述都是一些m特殊的处理流程，等处理完后，就需要开始寻找g来进行执行。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">if gp &#x3D;&#x3D; nil &amp;&amp; gcBlackenEnabled !&#x3D; 0 &#123;</span><br><span class="line">	gp &#x3D; gcController.findRunnableGCWorker(_g_.m.p.ptr())</span><br><span class="line">	tryWakeP &#x3D; tryWakeP || gp !&#x3D; nil</span><br><span class="line">&#125;</span><br><span class="line">if gp &#x3D;&#x3D; nil &#123;</span><br><span class="line">	if _g_.m.p.ptr().schedtick%61 &#x3D;&#x3D; 0 &amp;&amp; sched.runqsize &gt; 0 &#123;</span><br><span class="line">		lock(&amp;sched.lock)</span><br><span class="line">		gp &#x3D; globrunqget(_g_.m.p.ptr(), 1)</span><br><span class="line">		unlock(&amp;sched.lock)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line">if gp &#x3D;&#x3D; nil &#123;</span><br><span class="line">	gp, inheritTime &#x3D; runqget(_g_.m.p.ptr())</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述代码，基本上也就是3块逻辑：优先执行gc的g、其次查看是否需要获取全局列表、最后查看当前p的列表。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">if gp.lockedm !&#x3D; 0 &#123;</span><br><span class="line">	&#x2F;&#x2F; Hands off own p to the locked m,</span><br><span class="line">	&#x2F;&#x2F; then blocks waiting for a new p.</span><br><span class="line">	startlockedm(gp)</span><br><span class="line">	goto top</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">execute(gp, inheritTime)</span><br></pre></td></tr></table></figure>
-
-<p>最后针对绑定的g进行特殊处理。否则就执行<code>execute</code>方法</p>
-<blockquote>
-<p>会从哪些地方去获取g？优先级是什么？</p>
-</blockquote>
-<h4 id="Execute函数"><a href="#Execute函数" class="headerlink" title="Execute函数"></a>Execute函数</h4><p>该函数主要功能切换当前上下文至指定的g中，具体源码如下，没有特别的逻辑，都是将g属性初始化一遍。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">func execute(gp *g, inheritTime bool) &#123;</span><br><span class="line">	_g_ :&#x3D; getg()</span><br><span class="line"></span><br><span class="line">	_g_.m.curg &#x3D; gp</span><br><span class="line">	gp.m &#x3D; _g_.m</span><br><span class="line">	casgstatus(gp, _Grunnable, _Grunning)</span><br><span class="line">	gp.waitsince &#x3D; 0</span><br><span class="line">	gp.preempt &#x3D; false</span><br><span class="line">	gp.stackguard0 &#x3D; gp.stack.lo + _StackGuard</span><br><span class="line">	if !inheritTime &#123;</span><br><span class="line">		_g_.m.p.ptr().schedtick++</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	gogo(&amp;gp.sched)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>而<code>gogo</code>方法是真正在汇编层切换寄存器的逻辑，传入的sched就是这个g的上下文信息，包含4个寄存器信息，代码如下：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">TEXT runtime·gogo(SB), NOSPLIT, $16-8</span><br><span class="line">	MOVQ	buf+0(FP), BX		&#x2F;&#x2F; gobuf</span><br><span class="line">	MOVQ	gobuf_g(BX), DX</span><br><span class="line">	MOVQ	0(DX), CX		&#x2F;&#x2F; make sure g !&#x3D; nil</span><br><span class="line">	get_tls(CX)</span><br><span class="line">	MOVQ	DX, g(CX)		&#x2F;&#x2F; 保存g至tls中</span><br><span class="line">	&#x2F;&#x2F; 恢复sp，ax，dx，bp寄存器</span><br><span class="line">	MOVQ	gobuf_sp(BX), SP	&#x2F;&#x2F; restore SP</span><br><span class="line">	MOVQ	gobuf_ret(BX), AX</span><br><span class="line">	MOVQ	gobuf_ctxt(BX), DX</span><br><span class="line">	MOVQ	gobuf_bp(BX), BP</span><br><span class="line">	&#x2F;&#x2F; 清空gobuf</span><br><span class="line">	MOVQ	$0, gobuf_sp(BX)	&#x2F;&#x2F; clear to help garbage collector</span><br><span class="line">	MOVQ	$0, gobuf_ret(BX)</span><br><span class="line">	MOVQ	$0, gobuf_ctxt(BX)</span><br><span class="line">	MOVQ	$0, gobuf_bp(BX)</span><br><span class="line">	MOVQ	gobuf_pc(BX), BX</span><br><span class="line">	JMP	BX</span><br></pre></td></tr></table></figure>
-
-<h4 id="Goexit函数"><a href="#Goexit函数" class="headerlink" title="Goexit函数"></a>Goexit函数</h4><p>goexit方法是当当前线程执行完毕后执行的析构方法，设置的方法为：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">func gostartcallfn(gobuf *gobuf, fv *funcval) &#123;</span><br><span class="line">    var fn unsafe.Pointer</span><br><span class="line">    if fv !&#x3D; nil &#123;</span><br><span class="line">        fn &#x3D; unsafe.Pointer(fv.fn)</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        fn &#x3D; unsafe.Pointer(funcPC(nilfunc))</span><br><span class="line">    &#125;</span><br><span class="line">    gostartcall(gobuf, fn, unsafe.Pointer(fv))</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; adjust Gobuf as if it executed a call to fn with context ctxt</span><br><span class="line">&#x2F;&#x2F; and then did an immediate gosave.</span><br><span class="line">func gostartcall(buf *gobuf, fn, ctxt unsafe.Pointer) &#123;</span><br><span class="line">    sp :&#x3D; buf.sp</span><br><span class="line">    if sys.RegSize &gt; sys.PtrSize &#123;</span><br><span class="line">        sp -&#x3D; sys.PtrSize</span><br><span class="line">        *(*uintptr)(unsafe.Pointer(sp)) &#x3D; 0</span><br><span class="line">    &#125;</span><br><span class="line">    sp -&#x3D; sys.PtrSize</span><br><span class="line">    *(*uintptr)(unsafe.Pointer(sp)) &#x3D; buf.pc &#x2F;&#x2F; 注意这里，这个，这里的 buf.pc 实际上是 goexit 的 pc</span><br><span class="line">    buf.sp &#x3D; sp</span><br><span class="line">    buf.pc &#x3D; uintptr(fn)</span><br><span class="line">    buf.ctxt &#x3D; ctxt</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>在 gostartcall 中把 newproc1 时设置到 buf.pc 中的 goexit 的函数地址放到了 goroutine 的栈顶，然后重新设置 buf.pc 为 goroutine 函数的位置。这样做的目的是为了在执行完任何 goroutine 的函数时，通过 RET 指令，都能从栈顶把 sp 保存的 goexit 的指令 pop 到 pc 寄存器，效果相当于任何 goroutine 执行函数执行完之后，都会去执行 runtime.goexit，完成一些清理工作后再进入 schedule。</p>
-<p>当前流程只剩下<code>goexit-&gt;goexit1-&gt;goexit0</code>，代码还算可读，直接上代码：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">TEXT runtime·goexit(SB),NOSPLIT,$0-0</span><br><span class="line">	BYTE	$0x90	&#x2F;&#x2F; NOP</span><br><span class="line">	CALL	runtime·goexit1(SB)	&#x2F;&#x2F; does not return</span><br><span class="line">	&#x2F;&#x2F; traceback from goexit1 must hit code range of goexit</span><br><span class="line">	BYTE	$0x90	&#x2F;&#x2F; NOP</span><br><span class="line"></span><br><span class="line">	... ... </span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; Finishes execution of the current goroutine.</span><br><span class="line">func goexit1() &#123;</span><br><span class="line">	if raceenabled &#123;</span><br><span class="line">		racegoend()</span><br><span class="line">	&#125;</span><br><span class="line">	if trace.enabled &#123;</span><br><span class="line">		traceGoEnd()</span><br><span class="line">	&#125;</span><br><span class="line">	mcall(goexit0)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>在代码来看，goexit和goexit1目标只是切换到g0协程中并执行<code>goexit0</code>中，第一部分，大部分都是变量清空，并清空当前的g状态置为_Gdead。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">func goexit0(gp *g) &#123;</span><br><span class="line">	_g_ :&#x3D; getg()</span><br><span class="line"></span><br><span class="line">	casgstatus(gp, _Grunning, _Gdead)</span><br><span class="line">	if isSystemGoroutine(gp, false) &#123;</span><br><span class="line">		atomic.Xadd(&amp;sched.ngsys, -1)</span><br><span class="line">	&#125;</span><br><span class="line">	gp.m &#x3D; nil</span><br><span class="line">	locked :&#x3D; gp.lockedm !&#x3D; 0</span><br><span class="line">	gp.lockedm &#x3D; 0</span><br><span class="line">	_g_.m.lockedg &#x3D; 0</span><br><span class="line">	gp.preemptStop &#x3D; false</span><br><span class="line">	gp.paniconfault &#x3D; false</span><br><span class="line">	gp._defer &#x3D; nil &#x2F;&#x2F; should be true already but just in case.</span><br><span class="line">	gp._panic &#x3D; nil &#x2F;&#x2F; non-nil for Goexit during panic. points at stack-allocated data.</span><br><span class="line">	gp.writebuf &#x3D; nil</span><br><span class="line">	gp.waitreason &#x3D; 0</span><br><span class="line">	gp.param &#x3D; nil</span><br><span class="line">	gp.labels &#x3D; nil</span><br><span class="line">	gp.timer &#x3D; nil</span><br><span class="line">	if gcBlackenEnabled !&#x3D; 0 &amp;&amp; gp.gcAssistBytes &gt; 0 &#123;</span><br><span class="line">		scanCredit :&#x3D; int64(gcController.assistWorkPerByte * float64(gp.gcAssistBytes))</span><br><span class="line">		atomic.Xaddint64(&amp;gcController.bgScanCredit, scanCredit)</span><br><span class="line">		gp.gcAssistBytes &#x3D; 0</span><br><span class="line">	&#125;</span><br><span class="line">	dropg()</span><br></pre></td></tr></table></figure>
-
-<p>清空完自身的g后，主要就剩下清理其他的信息，例如：写入g的队列中，清空m，进入调度。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">func goexit0(gp *g) &#123;</span><br><span class="line">	... ...</span><br><span class="line">	gfput(_g_.m.p.ptr(), gp)</span><br><span class="line">	if locked &#123;</span><br><span class="line">		if GOOS !&#x3D; &quot;plan9&quot; &#123; &#x2F;&#x2F; See golang.org&#x2F;issue&#x2F;22227.</span><br><span class="line">			gogo(&amp;_g_.m.g0.sched)</span><br><span class="line">		&#125; else &#123;</span><br><span class="line">			_g_.m.lockedExt &#x3D; 0</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	schedule()</span><br></pre></td></tr></table></figure>
-
-<h2 id="待办事项"><a href="#待办事项" class="headerlink" title="待办事项"></a>待办事项</h2><ul>
-<li>定时执行逻辑</li>
-<li>锁定线程逻辑</li>
-<li>tryWakeP逻辑</li>
-<li>findrunnable逻辑</li>
-<li>mcall、notesleep逻辑</li>
-<li>inheritTime功能</li>
-</ul>
-
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
+  <nav class="pagination">
+    <span class="page-number current">1</span><a class="page-number" href="/page/2/">2</a><a class="extend next" rel="next" href="/page/2/"><i class="fa fa-angle-right" aria-label="下一页"></i></a>
+  </nav>
 
 
 
@@ -870,7 +1052,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-count">11</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

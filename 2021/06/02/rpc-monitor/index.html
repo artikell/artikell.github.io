@@ -20,19 +20,19 @@
     var CONFIG = {"hostname":"artikell.github.io","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
   </script>
 
-  <meta name="description" content="前言GMP的关系G的调度抢占逻辑锁协程GMP清理">
+  <meta name="description" content="RPC的高可用存在几个方向：Load Balancing负载均衡、Rate Limiting限流、Load Shedding熔断、Graceful Degradation优雅退化、Latency and Deadlines延迟和死线 Load Balancing负载均衡负载均衡核心目标其实主要是俩类：首先是减少负载、其次是提高可用性。 减少负载首先是分摊流量、并做到均匀分发，而可用性则是减少错误数">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Golang-Lockg学习">
-<meta property="og:url" content="http://artikell.github.io/2020/07/12/golang-lockg/index.html">
+<meta property="og:title" content="总结RPC高可用实践之路">
+<meta property="og:url" content="http://artikell.github.io/2021/06/02/rpc-monitor/index.html">
 <meta property="og:site_name" content="Artikell">
-<meta property="og:description" content="前言GMP的关系G的调度抢占逻辑锁协程GMP清理">
+<meta property="og:description" content="RPC的高可用存在几个方向：Load Balancing负载均衡、Rate Limiting限流、Load Shedding熔断、Graceful Degradation优雅退化、Latency and Deadlines延迟和死线 Load Balancing负载均衡负载均衡核心目标其实主要是俩类：首先是减少负载、其次是提高可用性。 减少负载首先是分摊流量、并做到均匀分发，而可用性则是减少错误数">
 <meta property="og:locale" content="zh_CN">
-<meta property="article:published_time" content="2020-07-12T15:51:41.000Z">
-<meta property="article:modified_time" content="2021-06-01T17:32:05.284Z">
+<meta property="article:published_time" content="2021-06-02T01:03:17.377Z">
+<meta property="article:modified_time" content="2021-06-02T01:03:35.453Z">
 <meta property="article:author" content="Skyfire Lee">
 <meta name="twitter:card" content="summary">
 
-<link rel="canonical" href="http://artikell.github.io/2020/07/12/golang-lockg/">
+<link rel="canonical" href="http://artikell.github.io/2021/06/02/rpc-monitor/">
 
 
 <script id="page-configurations">
@@ -45,7 +45,7 @@
   };
 </script>
 
-  <title>Golang-Lockg学习 | Artikell</title>
+  <title>总结RPC高可用实践之路 | Artikell</title>
   
 
 
@@ -150,7 +150,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2020/07/12/golang-lockg/">
+    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/02/rpc-monitor/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/avatar.gif">
@@ -163,7 +163,7 @@
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
-          Golang-Lockg学习
+          总结RPC高可用实践之路
         </h1>
 
         <div class="post-meta">
@@ -172,16 +172,10 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
+              
 
-              <time title="创建时间：2020-07-12 23:51:41" itemprop="dateCreated datePublished" datetime="2020-07-12T23:51:41+08:00">2020-07-12</time>
+              <time title="创建时间：2021-06-02 09:03:17 / 修改时间：09:03:35" itemprop="dateCreated datePublished" datetime="2021-06-02T09:03:17+08:00">2021-06-02</time>
             </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2021-06-02 01:32:05" itemprop="dateModified" datetime="2021-06-02T01:32:05+08:00">2021-06-02</time>
-              </span>
 
           
 
@@ -194,7 +188,22 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><h2 id="GMP的关系"><a href="#GMP的关系" class="headerlink" title="GMP的关系"></a>GMP的关系</h2><h2 id="G的调度"><a href="#G的调度" class="headerlink" title="G的调度"></a>G的调度</h2><h2 id="抢占逻辑"><a href="#抢占逻辑" class="headerlink" title="抢占逻辑"></a>抢占逻辑</h2><h2 id="锁协程"><a href="#锁协程" class="headerlink" title="锁协程"></a>锁协程</h2><h2 id="GMP清理"><a href="#GMP清理" class="headerlink" title="GMP清理"></a>GMP清理</h2>
+        <p>RPC的高可用存在几个方向：Load Balancing负载均衡、Rate Limiting限流、Load Shedding熔断、Graceful Degradation优雅退化、Latency and Deadlines延迟和死线</p>
+<h3 id="Load-Balancing负载均衡"><a href="#Load-Balancing负载均衡" class="headerlink" title="Load Balancing负载均衡"></a>Load Balancing负载均衡</h3><p>负载均衡核心目标其实主要是俩类：首先是减少负载、其次是提高可用性。</p>
+<p>减少负载首先是分摊流量、并做到均匀分发，而可用性则是减少错误数、更低的延迟、并支持弹性。</p>
+<p>而在这目标背后有很多障碍，对于每个请求的处理成本不同，第二是物理环境有差异，包括CPU性能差异以及邻居间互相影响。包括性能因素，中间例如JIT的预热、批量任务、大型GC导致性能出现问题。</p>
+<p>在解决这些背景的核心问题是活跃的请求数量不代表后端容量，CPU更好的处理的更多，而大集群最终退化成随机选择。而每个客户端的活跃请求不包括其他客户端发完一个后端的请求，导致容易缺少全局视角，且最闲的轮询容易引发惊群效应。</p>
+<h3 id="方案"><a href="#方案" class="headerlink" title="方案"></a>方案</h3><p>用于解决负载均衡有各种各样的方案设计</p>
+<p>P2C方案，作为一个实现简单、负载均衡器的CPU成本低、请求分布好、O(1)的复杂度。<strong>Power of Two Choices</strong>方式是我们常见的做法。比如说现在有多个机房，因为线上的集群是多个，比如100个机器一个集群，我们正常把20个放到一个机房，一般要5个机房，就可以做到同城的多机房容灾。</p>
+<p>对于这种情况以前的做法是需要在配置里面加zone，弄清楚这个机器的节点属于哪个zone，做一些复杂的配置去管理这个请求该去哪儿访问，通过这种方式就能比较好的进行规避。</p>
+<p>比如说图里的A节点访问其它节点模拟了2ms的延迟，它可以比较好的把更多的请求放到本机房里，同时也确保本机房请求过多或延迟过高时会动态调度到其他的机房，这是一个动态的平衡。这里放了三个节点演示，通过数学的方式比较好的把多机房balance解决掉，而不需要用复杂的配置来完成这件事。</p>
+<p>基于client统计指标调度</p>
+<p>在client侧可以通过采集三类信息来进行均衡判断：Health、连接或特定的错误比率，Latency：请求的耗时，Inflight：当前正在运行的请求数量。通过三者来判断当前的server端是否正常已经进行相关的权重调节。</p>
+<p>同时还存在基于server统计指标进行调度，其中利用类似于Actively：利用healthcheck同步；Passively：每次rpc response同步，CPU：百ms内的Moving Average 这类指标供均衡判断。</p>
+<p>同时，为了保证数据的可用性，需要对相关计算分数进行衰减处理。</p>
+<h3 id="影响"><a href="#影响" class="headerlink" title="影响"></a>影响</h3><p>负载均衡的策略执行后，很容易出现的影响是服务器之间的流量差异逐步放大，较慢的服务器接收的流量更少，从而容易导致abtest实验准确性，同时问题机器更难被监控发现</p>
+<h2 id="相关链接"><a href="#相关链接" class="headerlink" title="相关链接"></a>相关链接</h2><p><a href="https://zhuanlan.zhihu.com/p/354401594" target="_blank" rel="noopener">流量洪峰中如何设计弹性微服务架构 - 知乎 (zhihu.com)</a></p>
+
     </div>
 
     
@@ -209,12 +218,12 @@
         
     <div class="post-nav">
       <div class="post-nav-item">
-    <a href="/2020/07/08/golang-dispatch/" rel="prev" title="Golang调度讲解">
-      <i class="fa fa-chevron-left"></i> Golang调度讲解
+    <a href="/2021/06/02/level-db-demo/" rel="prev" title="LevelDB实践">
+      <i class="fa fa-chevron-left"></i> LevelDB实践
     </a></div>
       <div class="post-nav-item">
-    <a href="/2020/07/19/golang-gmp/" rel="next" title="Golang-GMP模型">
-      Golang-GMP模型 <i class="fa fa-chevron-right"></i>
+    <a href="/2021/06/02/chaos_engineering/" rel="next" title="关于混沌工程的理解">
+      关于混沌工程的理解 <i class="fa fa-chevron-right"></i>
     </a></div>
     </div>
       </footer>
@@ -274,7 +283,7 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
-          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#前言"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#GMP的关系"><span class="nav-number">2.</span> <span class="nav-text">GMP的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#G的调度"><span class="nav-number">3.</span> <span class="nav-text">G的调度</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#抢占逻辑"><span class="nav-number">4.</span> <span class="nav-text">抢占逻辑</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#锁协程"><span class="nav-number">5.</span> <span class="nav-text">锁协程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#GMP清理"><span class="nav-number">6.</span> <span class="nav-text">GMP清理</span></a></li></ol></div>
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#Load-Balancing负载均衡"><span class="nav-number">1.</span> <span class="nav-text">Load Balancing负载均衡</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#方案"><span class="nav-number">2.</span> <span class="nav-text">方案</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#影响"><span class="nav-number">3.</span> <span class="nav-text">影响</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#相关链接"><span class="nav-number"></span> <span class="nav-text">相关链接</span></a></div>
       </div>
       <!--/noindex-->
 

@@ -20,19 +20,19 @@
     var CONFIG = {"hostname":"artikell.github.io","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
   </script>
 
-  <meta name="description" content="前言GMP的关系G的调度抢占逻辑锁协程GMP清理">
+  <meta name="description" content="前言混沌工程一直在我心中是一个模糊的概念，摘要百度百科的解释：通过一系列可控的实验和执行实验的原则，混沌工程将揭 示出分布式系统中随时发生的各类事件是如何逐步导致系统整体不可用的。 在滴滴内部对应的便是放火系统，其中便有了如何放火、防火、监控等各类方法，以在执行混沌操作时，对线上业务影响最少。 概要混沌工程是一个主动发现系统中脆弱点的整套方法论，所谓方法论，就是关于人们认识世界、改造世界的方法的理">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Golang-Lockg学习">
-<meta property="og:url" content="http://artikell.github.io/2020/07/12/golang-lockg/index.html">
+<meta property="og:title" content="关于混沌工程的理解">
+<meta property="og:url" content="http://artikell.github.io/2021/06/02/chaos_engineering/index.html">
 <meta property="og:site_name" content="Artikell">
-<meta property="og:description" content="前言GMP的关系G的调度抢占逻辑锁协程GMP清理">
+<meta property="og:description" content="前言混沌工程一直在我心中是一个模糊的概念，摘要百度百科的解释：通过一系列可控的实验和执行实验的原则，混沌工程将揭 示出分布式系统中随时发生的各类事件是如何逐步导致系统整体不可用的。 在滴滴内部对应的便是放火系统，其中便有了如何放火、防火、监控等各类方法，以在执行混沌操作时，对线上业务影响最少。 概要混沌工程是一个主动发现系统中脆弱点的整套方法论，所谓方法论，就是关于人们认识世界、改造世界的方法的理">
 <meta property="og:locale" content="zh_CN">
-<meta property="article:published_time" content="2020-07-12T15:51:41.000Z">
-<meta property="article:modified_time" content="2021-06-01T17:32:05.284Z">
+<meta property="article:published_time" content="2021-06-02T01:04:16.266Z">
+<meta property="article:modified_time" content="2021-06-02T01:04:42.233Z">
 <meta property="article:author" content="Skyfire Lee">
 <meta name="twitter:card" content="summary">
 
-<link rel="canonical" href="http://artikell.github.io/2020/07/12/golang-lockg/">
+<link rel="canonical" href="http://artikell.github.io/2021/06/02/chaos_engineering/">
 
 
 <script id="page-configurations">
@@ -45,7 +45,7 @@
   };
 </script>
 
-  <title>Golang-Lockg学习 | Artikell</title>
+  <title>关于混沌工程的理解 | Artikell</title>
   
 
 
@@ -150,7 +150,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2020/07/12/golang-lockg/">
+    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/02/chaos_engineering/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/avatar.gif">
@@ -163,7 +163,7 @@
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
-          Golang-Lockg学习
+          关于混沌工程的理解
         </h1>
 
         <div class="post-meta">
@@ -172,16 +172,10 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
+              
 
-              <time title="创建时间：2020-07-12 23:51:41" itemprop="dateCreated datePublished" datetime="2020-07-12T23:51:41+08:00">2020-07-12</time>
+              <time title="创建时间：2021-06-02 09:04:16 / 修改时间：09:04:42" itemprop="dateCreated datePublished" datetime="2021-06-02T09:04:16+08:00">2021-06-02</time>
             </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2021-06-02 01:32:05" itemprop="dateModified" datetime="2021-06-02T01:32:05+08:00">2021-06-02</time>
-              </span>
 
           
 
@@ -194,7 +188,27 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><h2 id="GMP的关系"><a href="#GMP的关系" class="headerlink" title="GMP的关系"></a>GMP的关系</h2><h2 id="G的调度"><a href="#G的调度" class="headerlink" title="G的调度"></a>G的调度</h2><h2 id="抢占逻辑"><a href="#抢占逻辑" class="headerlink" title="抢占逻辑"></a>抢占逻辑</h2><h2 id="锁协程"><a href="#锁协程" class="headerlink" title="锁协程"></a>锁协程</h2><h2 id="GMP清理"><a href="#GMP清理" class="headerlink" title="GMP清理"></a>GMP清理</h2>
+        <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>混沌工程一直在我心中是一个模糊的概念，摘要百度百科的解释：通过一系列可控的实验和执行实验的原则，混沌工程将揭 示出分布式系统中随时发生的各类事件是如何逐步导致系统整体不可用的。</p>
+<p>在滴滴内部对应的便是放火系统，其中便有了如何放火、防火、监控等各类方法，以在执行混沌操作时，对线上业务影响最少。</p>
+<h2 id="概要"><a href="#概要" class="headerlink" title="概要"></a>概要</h2><p>混沌工程是一个主动发现系统中脆弱点的整套方法论，所谓方法论，就是关于人们认识世界、改造世界的方法的理论。其目标是提高系统对不确定事件的抵御能力。</p>
+<p>但这并非易事，首先所有系统都是足够复杂，这就会导致工程未来演练故障时也需要足够复杂，而在本来复杂的系统中进行改动，这本书就是一个风险极高的事情。</p>
+<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>时代背景的主要原因是系统架构在逐步演进，从服务集群到分布式系统，开始微服务化、容器化、上云。服务之间开始逐步隔离，而用户需求变更的更加频繁，复杂化、多样性、快速化，促使了版本迭代不断增速：CICD、敏捷开发、devops、ABtest。</p>
+<p>所有的变更最终肯定会反映在系统复杂度上的增加，频繁的变更最大的挑战便是稳定性，如何使系统在频繁变更的过程中，继续保持自身的扩展性、稳定性、弹性能力、容错灾备能力，便是当今各公司需要解决的问题。</p>
+<p>混沌工程中，最好的手段，便是演练，通过故障注入的方式模拟线上异常，提前预警，避免大规模事故的发现。</p>
+<h2 id="实施"><a href="#实施" class="headerlink" title="实施"></a>实施</h2><h3 id="因素"><a href="#因素" class="headerlink" title="因素"></a>因素</h3><p>既然是复杂系统的稳定性工具，那还是需要考虑用户在使用稳定性工具时的感受，保证工具拥有可靠性、安全性、可扩展性、可定制化、可伸缩性、可维护性、用户体验等。</p>
+<h3 id="维度"><a href="#维度" class="headerlink" title="维度"></a>维度</h3><p>用故障注入作为手段来实施工程，那我们就需要从系统稳定性开始考虑如何保证影响可控的情况下如何正常开展演练。</p>
+<p>1）建立稳定状态的假设（清晰可衡量的指标）</p>
+<p>2）用多样的生产事件做验证（多样性降低误差）</p>
+<p>3）在生产环境做验证（真实场景）</p>
+<p>4）自动化开展实验（持续运行）</p>
+<p>5）控制最小化爆炸半径（影响范围）</p>
+<p>而，做到这么几点才能保证混沌工程能够正常的推广下去。</p>
+<h3 id="经验"><a href="#经验" class="headerlink" title="经验"></a>经验</h3><p>混沌工程的考虑维度我们已经列出来了。但是如何推广工程又是另外一套方法论，因为如何把事做好本身就是很难的事情。</p>
+<p>所以，在做事之前，考虑好影响，提前建立预期，对于混沌工程而言，总会不断的和故障打交道，于是就需要建立面向失败设计和拥抱失败的技术文化，让大家能够接受失败。同时先从简单的场景开始尝试，逐渐增加组织对系统的信心</p>
+<p>其实，工程需要一个实施目标，评估整体工程推进的情况，</p>
+<p>在前期：需要对历史故障的复现率以及解决率，确保故障改进的有效性；<strong>中期</strong>：提高监控发现率，验证故障发现能力的全面性和监控的完备程度；<strong>后期</strong>：故障的“发现-定位-恢复”市场这种综合性指标；</p>
+<p>最终希望是能达到在控制风险的前提下不断提升混沌工程效率<a href="https://zhuanlan.zhihu.com/p/354401594" target="_blank" rel="noopener">https://zhuanlan.zhihu.com/p/354401594</a>)</p>
+
     </div>
 
     
@@ -209,12 +223,12 @@
         
     <div class="post-nav">
       <div class="post-nav-item">
-    <a href="/2020/07/08/golang-dispatch/" rel="prev" title="Golang调度讲解">
-      <i class="fa fa-chevron-left"></i> Golang调度讲解
+    <a href="/2021/06/02/rpc-monitor/" rel="prev" title="总结RPC高可用实践之路">
+      <i class="fa fa-chevron-left"></i> 总结RPC高可用实践之路
     </a></div>
       <div class="post-nav-item">
-    <a href="/2020/07/19/golang-gmp/" rel="next" title="Golang-GMP模型">
-      Golang-GMP模型 <i class="fa fa-chevron-right"></i>
+    <a href="/2021/06/02/level-db-chan/" rel="next" title="关于LevelDB中的管道">
+      关于LevelDB中的管道 <i class="fa fa-chevron-right"></i>
     </a></div>
     </div>
       </footer>
@@ -274,7 +288,7 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
-          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#前言"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#GMP的关系"><span class="nav-number">2.</span> <span class="nav-text">GMP的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#G的调度"><span class="nav-number">3.</span> <span class="nav-text">G的调度</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#抢占逻辑"><span class="nav-number">4.</span> <span class="nav-text">抢占逻辑</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#锁协程"><span class="nav-number">5.</span> <span class="nav-text">锁协程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#GMP清理"><span class="nav-number">6.</span> <span class="nav-text">GMP清理</span></a></li></ol></div>
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#前言"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#概要"><span class="nav-number">2.</span> <span class="nav-text">概要</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#背景"><span class="nav-number">3.</span> <span class="nav-text">背景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#实施"><span class="nav-number">4.</span> <span class="nav-text">实施</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#因素"><span class="nav-number">4.1.</span> <span class="nav-text">因素</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#维度"><span class="nav-number">4.2.</span> <span class="nav-text">维度</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#经验"><span class="nav-number">4.3.</span> <span class="nav-text">经验</span></a></li></ol></li></ol></div>
       </div>
       <!--/noindex-->
 

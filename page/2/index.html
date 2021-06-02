@@ -20,32 +20,28 @@
     var CONFIG = {"hostname":"artikell.github.io","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
   </script>
 
-  <meta name="description" content="Golang调度是runtime中的核心部分，要说涉及到的东西，从基本的线程协程切换、GC的STW，到锁的暂停，都有相关涉猎。今天请个假休息一下，有空整理整理最近看的调度知识。 调度基本知识进程、线程和协程进程和线程的区别都不用说了，简单来说就是，最初，大佬们觉得，每个任务肯定都有独立的内存空间、句柄等等等。只要保证程序直接能够不互相干扰就行。 当机器性能不断的提升，程序员们发现，我任务太多了，需">
-<meta property="og:type" content="article">
-<meta property="og:title" content="Golang调度讲解">
-<meta property="og:url" content="http://artikell.github.io/2020/07/08/golang-dispatch/index.html">
+  <meta property="og:type" content="website">
+<meta property="og:title" content="Artikell">
+<meta property="og:url" content="http://artikell.github.io/page/2/index.html">
 <meta property="og:site_name" content="Artikell">
-<meta property="og:description" content="Golang调度是runtime中的核心部分，要说涉及到的东西，从基本的线程协程切换、GC的STW，到锁的暂停，都有相关涉猎。今天请个假休息一下，有空整理整理最近看的调度知识。 调度基本知识进程、线程和协程进程和线程的区别都不用说了，简单来说就是，最初，大佬们觉得，每个任务肯定都有独立的内存空间、句柄等等等。只要保证程序直接能够不互相干扰就行。 当机器性能不断的提升，程序员们发现，我任务太多了，需">
 <meta property="og:locale" content="zh_CN">
-<meta property="article:published_time" content="2020-07-08T07:38:21.000Z">
-<meta property="article:modified_time" content="2021-06-01T17:32:05.283Z">
 <meta property="article:author" content="Skyfire Lee">
 <meta name="twitter:card" content="summary">
 
-<link rel="canonical" href="http://artikell.github.io/2020/07/08/golang-dispatch/">
+<link rel="canonical" href="http://artikell.github.io/page/2/">
 
 
 <script id="page-configurations">
   // https://hexo.io/docs/variables.html
   CONFIG.page = {
     sidebar: "",
-    isHome : false,
-    isPost : true,
+    isHome : true,
+    isPost : false,
     lang   : 'zh-CN'
   };
 </script>
 
-  <title>Golang调度讲解 | Artikell</title>
+  <title>Artikell</title>
   
 
 
@@ -143,10 +139,9 @@
         <div class="content-wrap">
           
 
-          <div class="content post posts-expand">
+          <div class="content index posts-expand">
             
-
-    
+      
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
@@ -162,9 +157,10 @@
       <meta itemprop="name" content="Artikell">
     </span>
       <header class="post-header">
-        <h1 class="post-title" itemprop="name headline">
-          Golang调度讲解
-        </h1>
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2020/07/08/golang-dispatch/" class="post-title-link" itemprop="url">Golang调度讲解</a>
+        </h2>
 
         <div class="post-meta">
             <span class="post-meta-item">
@@ -194,7 +190,7 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <p>Golang调度是runtime中的核心部分，要说涉及到的东西，从基本的线程协程切换、GC的STW，到锁的暂停，都有相关涉猎。今天请个假休息一下，有空整理整理最近看的调度知识。</p>
+          <p>Golang调度是runtime中的核心部分，要说涉及到的东西，从基本的线程协程切换、GC的STW，到锁的暂停，都有相关涉猎。今天请个假休息一下，有空整理整理最近看的调度知识。</p>
 <h2 id="调度基本知识"><a href="#调度基本知识" class="headerlink" title="调度基本知识"></a>调度基本知识</h2><h3 id="进程、线程和协程"><a href="#进程、线程和协程" class="headerlink" title="进程、线程和协程"></a>进程、线程和协程</h3><p>进程和线程的区别都不用说了，简单来说就是，最初，大佬们觉得，每个任务肯定都有独立的内存空间、句柄等等等。只要保证程序直接能够不互相干扰就行。</p>
 <p>当机器性能不断的提升，程序员们发现，我任务太多了，需要执行很久，但是并不需要那么多的空间。如果照原来的方法每个任务都分配空间就特别耗时和耗资源，于是决定在进程的基础上拆分出线程，你只负责执行任务就行了。</p>
 <p>按道理，线程已经足够轻量，大数据时代又来了。现在需要大量的碎片计算，就像请求一个hello world，执行的任务不耗时，但是频繁。这时候的线程切换就是一个问题，主要原因是，线程的切换需要切换至操作系统的内核态，不断地做内存的复制，页表的cache很容易就失效，耗时因此增加。</p>
@@ -321,31 +317,25 @@
 <li>inheritTime功能</li>
 </ul>
 
+      
     </div>
 
     
     
     
-
       <footer class="post-footer">
-
-        
-
-
-        
-    <div class="post-nav">
-      <div class="post-nav-item"></div>
-      <div class="post-nav-item">
-    <a href="/2020/07/12/golang-lockg/" rel="next" title="Golang-Lockg学习">
-      Golang-Lockg学习 <i class="fa fa-chevron-right"></i>
-    </a></div>
-    </div>
+        <div class="post-eof"></div>
       </footer>
-    
   </article>
   
   
   
+
+
+  
+  <nav class="pagination">
+    <a class="extend prev" rel="prev" href="/"><i class="fa fa-angle-left" aria-label="上一页"></i></a><a class="page-number" href="/">1</a><span class="page-number current">2</span>
+  </nav>
 
 
 
@@ -397,7 +387,6 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
-          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#调度基本知识"><span class="nav-number">1.</span> <span class="nav-text">调度基本知识</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#进程、线程和协程"><span class="nav-number">1.1.</span> <span class="nav-text">进程、线程和协程</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#并发模型"><span class="nav-number">1.2.</span> <span class="nav-text">并发模型</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#GMP模型"><span class="nav-number">1.3.</span> <span class="nav-text">GMP模型</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#特殊的线程、协程"><span class="nav-number">1.4.</span> <span class="nav-text">特殊的线程、协程</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#进程启动"><span class="nav-number">2.</span> <span class="nav-text">进程启动</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#最初的入口和空间"><span class="nav-number">2.1.</span> <span class="nav-text">最初的入口和空间</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#调度启动流程"><span class="nav-number">2.2.</span> <span class="nav-text">调度启动流程</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#开始调度循环"><span class="nav-number">2.3.</span> <span class="nav-text">开始调度循环</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Schedule函数"><span class="nav-number">2.3.1.</span> <span class="nav-text">Schedule函数</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Execute函数"><span class="nav-number">2.3.2.</span> <span class="nav-text">Execute函数</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Goexit函数"><span class="nav-number">2.3.3.</span> <span class="nav-text">Goexit函数</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#待办事项"><span class="nav-number">3.</span> <span class="nav-text">待办事项</span></a></li></ol></div>
       </div>
       <!--/noindex-->
 
