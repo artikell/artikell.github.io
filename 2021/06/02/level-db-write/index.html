@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.1">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"artikell.github.io","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="前言打开流程完成了整个db的初始化，而后就是整个level对比的存储流程，如何读写db是核心业务。当然读写自然会触发压缩流程，但本文单纯只会串联整个的读写过程，保证内容的简洁，至于压缩则另开一篇详解。 写流程命令封装之前文章中，我们有提过更新的2个操作，在最后底层其实是一个操作： 1234567func (db *DB) Put(key, value []byte, wo *opt.WriteOp">
+<meta property="og:type" content="article">
+<meta property="og:title" content="浅析levelDB流程（读写流程）">
+<meta property="og:url" content="http://artikell.github.io/2021/06/02/level-db-write/index.html">
+<meta property="og:site_name" content="Artikell">
+<meta property="og:description" content="前言打开流程完成了整个db的初始化，而后就是整个level对比的存储流程，如何读写db是核心业务。当然读写自然会触发压缩流程，但本文单纯只会串联整个的读写过程，保证内容的简洁，至于压缩则另开一篇详解。 写流程命令封装之前文章中，我们有提过更新的2个操作，在最后底层其实是一个操作： 1234567func (db *DB) Put(key, value []byte, wo *opt.WriteOp">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-06-02T04:33:26.306Z">
+<meta property="article:modified_time" content="2021-06-02T05:02:21.325Z">
+<meta property="article:author" content="Skyfire Lee">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://artikell.github.io/2021/06/02/level-db-write/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>浅析levelDB流程（读写流程） | Artikell</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">Artikell</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/02/level-db-write/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Skyfire Lee">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Artikell">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          浅析levelDB流程（读写流程）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2021-06-02 12:33:26 / 修改时间：13:02:21" itemprop="dateCreated datePublished" datetime="2021-06-02T12:33:26+08:00">2021-06-02</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>打开流程完成了整个db的初始化，而后就是整个level对比的存储流程，如何读写db是核心业务。当然读写自然会触发压缩流程，但本文单纯只会串联整个的读写过程，保证内容的简洁，至于压缩则另开一篇详解。</p>
+<h2 id="写流程"><a href="#写流程" class="headerlink" title="写流程"></a>写流程</h2><h3 id="命令封装"><a href="#命令封装" class="headerlink" title="命令封装"></a>命令封装</h3><p>之前文章中，我们有提过更新的2个操作，在最后底层其实是一个操作：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">func (db *DB) Put(key, value []byte, wo *opt.WriteOptions) error &#123;</span><br><span class="line">	return db.putRec(keyTypeVal, key, value, wo)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func (db *DB) Delete(key []byte, wo *opt.WriteOptions) error &#123;</span><br><span class="line">	return db.putRec(keyTypeDel, key, nil, wo)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看出，在<code>Put</code>和<code>Delete</code>命令中，最终会直接调用<code>putRec</code>方法，而在此方法中，做的核心逻辑就是，抢锁，并等待信息，其中抢锁的逻辑还是由<code>channel</code>实现，逻辑后续再理，先了解一下写入流程<code>writeLocked</code>方法：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">batch :&#x3D; db.batchPool.Get().(*Batch)</span><br><span class="line">batch.Reset()</span><br><span class="line">batch.appendRec(kt, key, value)</span><br><span class="line">return db.writeLocked(batch, batch, merge, sync)</span><br></pre></td></tr></table></figure>
+<p>调用该方法后，则就是AOF写入以及落入<code>memdb</code>跳表数据库中：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F; Seq number.</span><br><span class="line">seq :&#x3D; db.seq + 1</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; Write journal.</span><br><span class="line">if err :&#x3D; db.writeJournal(batches, seq, sync); err !&#x3D; nil &#123;</span><br><span class="line">	db.unlockWrite(overflow, merged, err)</span><br><span class="line">	return err</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; Put batches.</span><br><span class="line">for _, batch :&#x3D; range batches &#123;</span><br><span class="line">	if err :&#x3D; batch.putMem(seq, mdb.DB); err !&#x3D; nil &#123;</span><br><span class="line">		panic(err)</span><br><span class="line">	&#125;</span><br><span class="line">	seq +&#x3D; uint64(batch.Len())</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>至此，数据已经落入存储中，并返回告知请求处理正常。那么，这一套流程，中间还存在哪些问题呢？<br>其中提高吞吐、提高内存空间利用率则是中间的优化点。</p>
+<h3 id="合并写"><a href="#合并写" class="headerlink" title="合并写"></a>合并写</h3><p>关于吞吐量的计算逻辑可以参考：<a href="https://zhuanlan.zhihu.com/p/337708438" target="_blank" rel="noopener">https://zhuanlan.zhihu.com/p/337708438</a></p>
+<p>由于本身leveldb会写入内存，所以中间存在锁的抢占，而在golang中，leveldb使用的是channel进行锁争抢，当你能写入writeLockC管道时，便可以继续写入操作。然而，锁的争抢必定会导致性能下降，那么，合并写就成为了提供性能的一个解决方案。</p>
+<p>合并锁的逻辑就是，优先尝试写入writeMergeC管道中，如果写入成功，则等待合并写的结果返回</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">case db.writeMergeC &lt;- writeMerge&#123;sync: sync, keyType: kt, key: key, value: value&#125;:</span><br><span class="line">    if &lt;-db.writeMergedC &#123;</span><br><span class="line">        &#x2F;&#x2F; Write is merged.</span><br><span class="line">        return &lt;-db.writeAckC</span><br><span class="line">    &#125;</span><br><span class="line">    &#x2F;&#x2F; Write is not merged, the write lock is handed to us. Continue.</span><br><span class="line">case db.writeLockC &lt;- struct&#123;&#125;&#123;&#125;:</span><br><span class="line">    &#x2F;&#x2F; Write lock acquired.</span><br><span class="line">case err :&#x3D; &lt;-db.compPerErrC:</span><br><span class="line">    &#x2F;&#x2F; Compaction error.</span><br><span class="line">    return err</span><br><span class="line">case &lt;-db.closeC:</span><br><span class="line">    &#x2F;&#x2F; Closed</span><br><span class="line">    return ErrClosed</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>而如果合并锁写入不成功，则尝试去抢写入锁，如果当前写入锁还是没有释放，那其中有可能导致异常出现（猜测）。<br>而在抢到写入锁的协程中，则会不断的等待合并写的请求达到上限</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">merge: </span><br><span class="line"></span><br><span class="line">for mergeLimit &gt; 0 &#123;</span><br><span class="line">    select &#123;</span><br><span class="line">    case incoming :&#x3D; &lt;-db.writeMergeC:</span><br><span class="line">        ... ...</span><br><span class="line">    default:</span><br><span class="line">        break merge</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>由此可见，当一次写入异常时，常常会阻塞所有的合并写异常，所有，合并写其实是针对大数据量的变更。</p>
+<p>当然，如果处理完成后，则会写入writeAckC管道告知等待的写入，但是如果此次合并写并没有写入完成写入，则会使其抢锁成功，并自身去进行写入，这块逻辑便是之前的writeMergeC和writeLockC逻辑。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">func (db *DB) unlockWrite(overflow bool, merged int, err error) &#123;</span><br><span class="line">	for i :&#x3D; 0; i &lt; merged; i++ &#123;</span><br><span class="line">		db.writeAckC &lt;- err</span><br><span class="line">	&#125;</span><br><span class="line">	if overflow &#123;</span><br><span class="line">		&#x2F;&#x2F; Pass lock to the next write (that failed to merge).</span><br><span class="line">		db.writeMergedC &lt;- false</span><br><span class="line">	&#125; else &#123;</span><br><span class="line">		&#x2F;&#x2F; Release lock.</span><br><span class="line">		&lt;-db.writeLockC</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/06/02/java-gc-2/" rel="prev" title="关于JVM的垃圾收集（2）">
+      <i class="fa fa-chevron-left"></i> 关于JVM的垃圾收集（2）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#前言"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#写流程"><span class="nav-number">2.</span> <span class="nav-text">写流程</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#命令封装"><span class="nav-number">2.1.</span> <span class="nav-text">命令封装</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#合并写"><span class="nav-number">2.2.</span> <span class="nav-text">合并写</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Skyfire Lee</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">12</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2021</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Skyfire Lee</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
