@@ -1,5 +1,5 @@
 ---
-title: 浅析levelDB流程（读写流程）
+title: 浅析levelDB流程（写流程）
 ---
 
 ## 前言
