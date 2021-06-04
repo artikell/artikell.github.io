@@ -145,6 +145,75 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/04/level-db-read/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Skyfire Lee">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Artikell">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/06/04/level-db-read/" class="post-title-link" itemprop="url">浅析levelDB流程（读流程）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2021-06-04 01:00:43 / 修改时间：01:24:26" itemprop="dateCreated datePublished" datetime="2021-06-04T01:00:43+08:00">2021-06-04</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>前文描述完写流程，此时就需要描述一下大体的数据读取流程。</p>
+<h2 id="命令封装"><a href="#命令封装" class="headerlink" title="命令封装"></a>命令封装</h2><p>读取的时候，由于是kv数据库，当然只会有一个参数，那就是key的值，同时还有一个读取时的选型，当前是包含是否读取缓存、是否严格查询。两者含义挖坑之后再填</p>
+<p>同时，在得到key的数据后，为了避免读写冲突，所以会在db层面生成一个快照，保证读取的数据不会被后来的写入所影响，这也是变现的实现了一下可重复读？</p>
+<p>而具体的快照，则只是当前数据库中的唯一递增序号。这也避免了在读取时，数据被销毁，导致数据丢失。</p>
+<p>进入读取方法后，leveldb还会将读取命令生成一个internalKey对象，其中包含<code>key</code>、<code>seq</code>、<code>keyType</code>三个属性。</p>
+<h2 id="读取MEM流程"><a href="#读取MEM流程" class="headerlink" title="读取MEM流程"></a>读取MEM流程</h2><p><code>get</code>方法里面，还支持传入memDB和tFile对象，目的是支持事务操作，这块逻辑暂不考虑。</p>
+<p>拿到数据后，则优先从<code>memDB</code>中获取数据，当然，在leveldb中，memDB一直存在2个：<code>mem</code>和<code>frozenMem</code>。在读取时，为了避免内存变更，则将2者进行引用增加。</p>
+<p>获取到memDB后,则直接从跳表中获取,如果获取到后，则直接返回，此时，引用并没有清理，且引用清理时机过长，完全可能导致引用一直不释放。</p>
+<h2 id="读取FILE流程"><a href="#读取FILE流程" class="headerlink" title="读取FILE流程"></a>读取FILE流程</h2><p>file中，则涉及到version的概念，因为之前讲过，version中保存了整个leveldb的文件信息，所以，在数据读取时，还是需要保证version不会被销毁，同理还是增加引用。</p>
+<p>其次则就会传入key信息，此时，则需要对leveldb每一次文件进行遍历。</p>
+<p>第一遍历level0文件，全部遍历，第二则遍历levle0+的文件，则只需要对比最大key信息即可，</p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/03/level-db-file/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -228,7 +297,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2021/06/02/level-db-write/" class="post-title-link" itemprop="url">浅析levelDB流程（读写流程）</a>
+            <a href="/2021/06/02/level-db-write/" class="post-title-link" itemprop="url">浅析levelDB流程（写流程）</a>
         </h2>
 
         <div class="post-meta">
@@ -237,10 +306,16 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
-              
 
-              <time title="创建时间：2021-06-02 12:33:26 / 修改时间：13:02:21" itemprop="dateCreated datePublished" datetime="2021-06-02T12:33:26+08:00">2021-06-02</time>
+              <time title="创建时间：2021-06-02 12:33:26" itemprop="dateCreated datePublished" datetime="2021-06-02T12:33:26+08:00">2021-06-02</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2021-06-04 01:00:34" itemprop="dateModified" datetime="2021-06-04T01:00:34+08:00">2021-06-04</time>
+              </span>
 
           
 
@@ -819,76 +894,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://artikell.github.io/2021/06/02/hello-world/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="Skyfire Lee">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="Artikell">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2021/06/02/hello-world/" class="post-title-link" itemprop="url">Hello World</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2021-06-02 01:32:05" itemprop="dateCreated datePublished" datetime="2021-06-02T01:32:05+08:00">2021-06-02</time>
-            </span>
-
-          
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>Welcome to <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a>! This is your very first post. Check <a href="https://hexo.io/docs/" target="_blank" rel="noopener">documentation</a> for more info. If you get any problems when using Hexo, you can find the answer in <a href="https://hexo.io/docs/troubleshooting.html" target="_blank" rel="noopener">troubleshooting</a> or you can ask me on <a href="https://github.com/hexojs/hexo/issues" target="_blank" rel="noopener">GitHub</a>.</p>
-<h2 id="Quick-Start"><a href="#Quick-Start" class="headerlink" title="Quick Start"></a>Quick Start</h2><h3 id="Create-a-new-post"><a href="#Create-a-new-post" class="headerlink" title="Create a new post"></a>Create a new post</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo new <span class="string">"My New Post"</span></span><br></pre></td></tr></table></figure>
-
-<p>More info: <a href="https://hexo.io/docs/writing.html" target="_blank" rel="noopener">Writing</a></p>
-<h3 id="Run-server"><a href="#Run-server" class="headerlink" title="Run server"></a>Run server</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo server</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a href="https://hexo.io/docs/server.html" target="_blank" rel="noopener">Server</a></p>
-<h3 id="Generate-static-files"><a href="#Generate-static-files" class="headerlink" title="Generate static files"></a>Generate static files</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo generate</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a href="https://hexo.io/docs/generating.html" target="_blank" rel="noopener">Generating</a></p>
-<h3 id="Deploy-to-remote-sites"><a href="#Deploy-to-remote-sites" class="headerlink" title="Deploy to remote sites"></a>Deploy to remote sites</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo deploy</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a href="https://hexo.io/docs/one-command-deployment.html" target="_blank" rel="noopener">Deployment</a></p>
-
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -958,7 +963,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">13</span>
+          <span class="site-state-item-count">14</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
