@@ -6,6 +6,7 @@
     "build": "hexo generate",
     "clean": "hexo clean",
     "deploy": "hexo deploy",
+    "deploy-cloud": "hexo clean && hexo generate && rm -rf ~/static/blog && cp -rf public ~/static/blog",
     "server": "hexo server",
     "push": "hexo clean && git add . && git commit -m 'push new post' && git push"
   },

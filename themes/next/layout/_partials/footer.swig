@@ -11,6 +11,11 @@
 {%- endif %}
 
 <div class="copyright">
+  <a href="http://www.beian.miit.gov.cn/"  style="color:#f72b07" target="_blank">京ICP备2021025344号-1</a>
+</div>
+
+<div class="copyright">
+
   {% set copyright_year = date(null, 'YYYY') %}
   &copy; {% if theme.footer.since and theme.footer.since != copyright_year %}{{ theme.footer.since }} – {% endif %}
   <span itemprop="copyrightYear">{{ copyright_year }}</span>
