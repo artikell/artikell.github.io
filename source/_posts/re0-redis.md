@@ -8,10 +8,10 @@ tags: 从0开始的Redis
 - [Redis事件模型](https://www.naive1s.cn/2021/09/13/re0-redis-event/)
 - [Redis基础类型](https://www.naive1s.cn/2021/09/14/re0-redis-struct/)
 - Redis特殊类型
-- Redis中的主从同步
+- [Redis中的主从同步](https://www.naive1s.cn/2021/09/16/re0-redis-master/)
 - Redis的配置分类
 - Redis中的哨兵模式
-- Redis中的pipeline
+- [Redis中的pipeline](https://www.naive1s.cn/2021/09/16/re0-redis-pipeline/)
 - [Redis中的内存管理](https://www.naive1s.cn/2021/09/15/re0-redis-memory/)
 - Redis中的淘汰机制
 - Redis中的分布式设计
