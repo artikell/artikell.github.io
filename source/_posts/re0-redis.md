@@ -13,7 +13,8 @@ tags: 从0开始的Redis
 - Redis中的哨兵模式
 - [Redis中的pipeline](https://www.naive1s.cn/2021/09/16/re0-redis-pipeline/)
 - [Redis中的内存管理](https://www.naive1s.cn/2021/09/15/re0-redis-memory/)
-- Redis中的淘汰机制
+- [Redis中的淘汰机制](https://www.naive1s.cn/2021/09/17/re0-redis-expire/)
+- Redis中的持久化
 - Redis中的分布式设计
 - [redlock设计](https://www.naive1s.cn/2021/09/14/re0-redis-redlock/)
 - Redis线程模型
