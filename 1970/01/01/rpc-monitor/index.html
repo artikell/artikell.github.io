@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+    <head>
+		
+        <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+        <meta name="description" content="">
+        <link rel="shortcut icon" href="/asset/guolin.png"/>
+        <link rel="canonical" href="http://guolinn.com/">
+        <link rel="alternate" type="application/rss+xml" title="Skyfire Lee" href="/atom.xml">
+        <title>总结RPC高可用实践之路 | Artikell</title>
+        <meta name="description" content="{{meta_description}}">
+
+        <link href="//cdn.bootcss.com/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet">
+        <link rel="stylesheet" type="text/css" href="/styles/crisp.css">
+        <meta name="HandheldFriendly" content="True" />
+        <meta name="MobileOptimized" content="320" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+        <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+        <![endif]-->
+
+    <meta name="generator" content="Hexo 4.2.1"></head>
+    
+		<body class="post-template">
+	
+
+        <header id="header">
+            <a id="logo" href="/"><img src="/asset/guolin.png" alt="Artikell" /></a>
+            <h1><a href="/">Skyfire Lee</a></h1>
+            <p></p>
+            <div id="follow-icons">
+                  <a href="/atom.xml"><i class="fa fa-rss-square fa-2x"></i></a>
+  </div>
+<h6><a href="/about">About</a></h6>
+        </header>
+
+        <main id="content">
+        
+
+<article class="post">
+  一月 1, 1970
+  
+
+  <h1 class="post-title">总结RPC高可用实践之路</h1>
+  <section class="post-content article-entry">
+    <p>RPC的高可用存在几个方向：Load Balancing负载均衡、Rate Limiting限流、Load Shedding熔断、Graceful Degradation优雅退化、Latency and Deadlines延迟和死线</p>
+<h3 id="Load-Balancing负载均衡"><a href="#Load-Balancing负载均衡" class="headerlink" title="Load Balancing负载均衡"></a>Load Balancing负载均衡</h3><p>负载均衡核心目标其实主要是俩类：首先是减少负载、其次是提高可用性。</p>
+<p>减少负载首先是分摊流量、并做到均匀分发，而可用性则是减少错误数、更低的延迟、并支持弹性。</p>
+<p>而在这目标背后有很多障碍，对于每个请求的处理成本不同，第二是物理环境有差异，包括CPU性能差异以及邻居间互相影响。包括性能因素，中间例如JIT的预热、批量任务、大型GC导致性能出现问题。</p>
+<p>在解决这些背景的核心问题是活跃的请求数量不代表后端容量，CPU更好的处理的更多，而大集群最终退化成随机选择。而每个客户端的活跃请求不包括其他客户端发完一个后端的请求，导致容易缺少全局视角，且最闲的轮询容易引发惊群效应。</p>
+<h3 id="方案"><a href="#方案" class="headerlink" title="方案"></a>方案</h3><p>用于解决负载均衡有各种各样的方案设计</p>
+<p>P2C方案，作为一个实现简单、负载均衡器的CPU成本低、请求分布好、O(1)的复杂度。<strong>Power of Two Choices</strong>方式是我们常见的做法。比如说现在有多个机房，因为线上的集群是多个，比如100个机器一个集群，我们正常把20个放到一个机房，一般要5个机房，就可以做到同城的多机房容灾。</p>
+<p>对于这种情况以前的做法是需要在配置里面加zone，弄清楚这个机器的节点属于哪个zone，做一些复杂的配置去管理这个请求该去哪儿访问，通过这种方式就能比较好的进行规避。</p>
+<p>比如说图里的A节点访问其它节点模拟了2ms的延迟，它可以比较好的把更多的请求放到本机房里，同时也确保本机房请求过多或延迟过高时会动态调度到其他的机房，这是一个动态的平衡。这里放了三个节点演示，通过数学的方式比较好的把多机房balance解决掉，而不需要用复杂的配置来完成这件事。</p>
+<p>基于client统计指标调度</p>
+<p>在client侧可以通过采集三类信息来进行均衡判断：Health、连接或特定的错误比率，Latency：请求的耗时，Inflight：当前正在运行的请求数量。通过三者来判断当前的server端是否正常已经进行相关的权重调节。</p>
+<p>同时还存在基于server统计指标进行调度，其中利用类似于Actively：利用healthcheck同步；Passively：每次rpc response同步，CPU：百ms内的Moving Average 这类指标供均衡判断。</p>
+<p>同时，为了保证数据的可用性，需要对相关计算分数进行衰减处理。</p>
+<h3 id="影响"><a href="#影响" class="headerlink" title="影响"></a>影响</h3><p>负载均衡的策略执行后，很容易出现的影响是服务器之间的流量差异逐步放大，较慢的服务器接收的流量更少，从而容易导致abtest实验准确性，同时问题机器更难被监控发现</p>
+<h2 id="相关链接"><a href="#相关链接" class="headerlink" title="相关链接"></a>相关链接</h2><p><a href="https://zhuanlan.zhihu.com/p/354401594" target="_blank" rel="noopener">流量洪峰中如何设计弹性微服务架构 - 知乎 (zhihu.com)</a></p>
+
+  </section>
+  <footer class="post-footer">
+    <!--
+    <section class="author">
+      <h4>Skyfire Lee</h4>
+      <p></p>
+    </section>
+    -->
+  </footer>
+</article>
+
+<nav class="pagination" role="pagination">
+    
+    <a class="newer-posts" href="/1970/01/01/level-db-write/">
+        ← prev <!--浅析levelDB流程（写流程）-->
+    </a>
+    
+    <span class="page-number">•</span>
+    
+</nav>
+
+
+        </main>
+        <footer id="footer">
+            <section id="footer-message">&copy; 2022 Skyfire Lee. All rights reserved. Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>. <a href="https://github.com/guolin/crisp-hexo-theme" target="_blank">crisp</a> theme by <a href="guolin.github.io" target="_blank">Guo Lin</a>.</section>
+        </footer>
+    </body>
+</html>
+
+

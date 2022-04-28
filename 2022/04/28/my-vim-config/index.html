@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+    <head>
+		
+        <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+        <meta name="description" content="">
+        <link rel="shortcut icon" href="/asset/guolin.png"/>
+        <link rel="canonical" href="http://guolinn.com/">
+        <link rel="alternate" type="application/rss+xml" title="Skyfire Lee" href="/atom.xml">
+        <title>VIM配置分享 | Artikell</title>
+        <meta name="description" content="{{meta_description}}">
+
+        <link href="//cdn.bootcss.com/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet">
+        <link rel="stylesheet" type="text/css" href="/styles/crisp.css">
+        <meta name="HandheldFriendly" content="True" />
+        <meta name="MobileOptimized" content="320" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+        <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+        <![endif]-->
+
+    <meta name="generator" content="Hexo 4.2.1"></head>
+    
+		<body class="post-template">
+	
+
+        <header id="header">
+            <a id="logo" href="/"><img src="/asset/guolin.png" alt="Artikell" /></a>
+            <h1><a href="/">Skyfire Lee</a></h1>
+            <p></p>
+            <div id="follow-icons">
+                  <a href="/atom.xml"><i class="fa fa-rss-square fa-2x"></i></a>
+  </div>
+<h6><a href="/about">About</a></h6>
+        </header>
+
+        <main id="content">
+        
+
+<article class="post">
+  四月 28, 2022
+  
+
+  <h1 class="post-title">VIM配置分享</h1>
+  <section class="post-content article-entry">
+    <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br></pre></td><td class="code"><pre><span class="line">call plug#begin(&#39;~&#x2F;.vim&#x2F;plugged&#39;)</span><br><span class="line">Plug &#39;itchyny&#x2F;lightline.vim&#39;</span><br><span class="line">Plug &#39;junegunn&#x2F;fzf&#39;</span><br><span class="line">Plug &#39;junegunn&#x2F;fzf.vim&#39;</span><br><span class="line">Plug &#39;terryma&#x2F;vim-multiple-cursors&#39;</span><br><span class="line">Plug &#39;scrooloose&#x2F;nerdtree&#39;</span><br><span class="line">Plug &#39;vim-airline&#x2F;vim-airline&#39;</span><br><span class="line">Plug &#39;vim-airline&#x2F;vim-airline-themes&#39;</span><br><span class="line">Plug &#39;bling&#x2F;vim-bufferline&#39;</span><br><span class="line">Plug &#39;fatih&#x2F;vim-go&#39;, &#123; &#39;do&#39;: &#39;:GoUpdateBinaries&#39; &#125;</span><br><span class="line">Plug &#39;Blackrush&#x2F;vim-gocode&#39;</span><br><span class="line">Plug &#39;Valloric&#x2F;YouCompleteMe&#39;</span><br><span class="line">Plug &#39;honza&#x2F;vim-snippets&#39;</span><br><span class="line">Plug &#39;majutsushi&#x2F;tagbar&#39;</span><br><span class="line">Plug &#39;marijnh&#x2F;tern_for_vim&#39;</span><br><span class="line">Plug &#39;Xuyuanp&#x2F;nerdtree-git-plugin&#39;</span><br><span class="line">Plug &#39;SirVer&#x2F;ultisnips&#39;</span><br><span class="line">Plug &#39;vim-scripts&#x2F;mru.vim&#39;</span><br><span class="line">Plug &#39;mhinz&#x2F;vim-startify&#39;</span><br><span class="line">Plug &#39;mhinz&#x2F;vim-startify&#39;</span><br><span class="line">call plug#end()</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">&quot; Vim 基础设置</span><br><span class="line">let mapleader&#x3D;&quot; &quot;</span><br><span class="line">set number</span><br><span class="line">set tabstop&#x3D;4</span><br><span class="line">set expandtab</span><br><span class="line">set smartindent</span><br><span class="line">set fdm&#x3D;indent</span><br><span class="line">set list</span><br><span class="line">set listchars&#x3D;tab:\ \ ,trail:.</span><br><span class="line">set hlsearch</span><br><span class="line">highlight WhitespaceEOL ctermbg&#x3D;red guibg&#x3D;red</span><br><span class="line">match WhitespaceEOL &#x2F;\s\+$&#x2F;</span><br><span class="line">let g:airline#extensions#tabline#enabled&#x3D;1 &quot;顶部tab显示&quot;</span><br><span class="line"></span><br><span class="line">&quot; 自定义改键</span><br><span class="line">map &lt;leader&gt;w :w&lt;CR&gt;</span><br><span class="line">map &lt;leader&gt;q :q&lt;CR&gt;</span><br><span class="line">map &lt;leader&gt;wq :wq&lt;CR&gt;</span><br><span class="line">map &lt;leader&gt;ws :source ~&#x2F;.vimrc&lt;CR&gt;</span><br><span class="line">map &lt;leader&gt;f &#x2F;</span><br><span class="line">map &lt;leader&gt;fh :noh&lt;CR&gt;</span><br><span class="line">map &lt;leader&gt;fp :Files&lt;CR&gt;</span><br><span class="line">nmap &lt;tab&gt; :bn&lt;cr&gt; &quot;设置tab键映射&quot;</span><br><span class="line">nnoremap &lt;leader&gt;y :call system(&#39;nc localhost 8377&#39;, @0)&lt;CR&gt;</span><br><span class="line"></span><br><span class="line">&quot; NerdTree 设置</span><br><span class="line">&quot; 关闭NERDTree快捷键</span><br><span class="line">map &lt;leader&gt;t :NERDTreeToggle&lt;CR&gt;</span><br><span class="line">&quot; 显示行号</span><br><span class="line">let NERDTreeShowLineNumbers&#x3D;1</span><br><span class="line">let NERDTreeAutoCenter&#x3D;1</span><br><span class="line">&quot; 是否显示隐藏文件</span><br><span class="line">&quot; let NERDTreeShowHidden&#x3D;1</span><br><span class="line">&quot; let NERDTreeShowBookmarks&#x3D;0</span><br><span class="line">&quot; 设置宽度</span><br><span class="line">let NERDTreeWinSize&#x3D;31</span><br><span class="line">&quot; 在终端启动vim时，共享NERDTree</span><br><span class="line">let g:nerdtree_tabs_open_on_console_startup&#x3D;1</span><br><span class="line">&quot; 忽略一下文件的显示</span><br><span class="line">let NERDTreeIgnore&#x3D;[&#39;\.pyc&#39;,&#39;\~$&#39;,&#39;\.swp&#39;]</span><br><span class="line">&quot; 显示书签列表</span><br><span class="line">let NERDTreeShowBookmarks&#x3D;1</span><br><span class="line">set rtp+&#x3D;~&#x2F;.fzf</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">command! -bang -nargs&#x3D;* Ag call fzf#vim#ag(&lt;q-args&gt;, &#123;&#39;options&#39;: &#39;--delimiter : --nth 4..&#39;&#125;, &lt;bang&gt;0)</span><br><span class="line">nnoremap &lt;silent&gt; &lt;Leader&gt;a :Ag &lt;C-R&gt;&lt;C-W&gt;&lt;CR&gt;</span><br></pre></td></tr></table></figure>
+  </section>
+  <footer class="post-footer">
+    <!--
+    <section class="author">
+      <h4>Skyfire Lee</h4>
+      <p></p>
+    </section>
+    -->
+  </footer>
+</article>
+
+<nav class="pagination" role="pagination">
+    
+    <span class="page-number">•</span>
+    
+    <a class="older-posts" href="/2021/09/27/note-framework-0/">
+        <!--读书笔记：从0开始学框架--> next →
+    </a>
+    
+</nav>
+
+
+        </main>
+        <footer id="footer">
+            <section id="footer-message">&copy; 2022 Skyfire Lee. All rights reserved. Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>. <a href="https://github.com/guolin/crisp-hexo-theme" target="_blank">crisp</a> theme by <a href="guolin.github.io" target="_blank">Guo Lin</a>.</section>
+        </footer>
+    </body>
+</html>
+
+

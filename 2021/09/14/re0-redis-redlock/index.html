@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+    <head>
+		
+        <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+        <meta name="description" content="">
+        <link rel="shortcut icon" href="/asset/guolin.png"/>
+        <link rel="canonical" href="http://guolinn.com/">
+        <link rel="alternate" type="application/rss+xml" title="Skyfire Lee" href="/atom.xml">
+        <title>redlock设计 | Artikell</title>
+        <meta name="description" content="{{meta_description}}">
+
+        <link href="//cdn.bootcss.com/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet">
+        <link rel="stylesheet" type="text/css" href="/styles/crisp.css">
+        <meta name="HandheldFriendly" content="True" />
+        <meta name="MobileOptimized" content="320" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+        <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+        <![endif]-->
+
+    <meta name="generator" content="Hexo 4.2.1"></head>
+    
+		<body class="post-template">
+	
+
+        <header id="header">
+            <a id="logo" href="/"><img src="/asset/guolin.png" alt="Artikell" /></a>
+            <h1><a href="/">Skyfire Lee</a></h1>
+            <p></p>
+            <div id="follow-icons">
+                  <a href="/atom.xml"><i class="fa fa-rss-square fa-2x"></i></a>
+  </div>
+<h6><a href="/about">About</a></h6>
+        </header>
+
+        <main id="content">
+        
+
+<article class="post">
+  九月 14, 2021
+  
+    <span class="taglist">  &middot; 
+    
+    
+      <a href='/tags/从0开始的Redis/'>从0开始的Redis</a> 
+    
+    </span>
+  
+
+  <h1 class="post-title">redlock设计</h1>
+  <section class="post-content article-entry">
+    <h2 id="零、从问题出发"><a href="#零、从问题出发" class="headerlink" title="零、从问题出发"></a>零、从问题出发</h2><h2 id="一、介绍"><a href="#一、介绍" class="headerlink" title="一、介绍"></a>一、介绍</h2><blockquote>
+<p>Redlock：全名叫做 Redis Distributed Lock;即使用redis实现的分布式锁；</p>
+</blockquote>
+<p>使用场景：多个服务间保证同一时刻同一时间段内同一用户只能有一个请求（防止关键业务出现并发攻击）；</p>
+<p>官网文档地址如下：<a href="https://redis.io/topics/distlock" target="_blank" rel="noopener">https://redis.io/topics/distlock</a></p>
+<p>这个锁的算法实现了多redis实例的情况，相对于单redis节点来说，<strong>优点</strong>在于 防止了 单节点故障造成整个服务停止运行的情况；并且在多节点中锁的设计，及多节点同时崩溃等各种意外情况有自己独特的设计方法；</p>
+<p>此博客或者官方文档的相关概念：</p>
+<ol>
+<li>TTL：Time To Live;只 redis key 的过期时间或有效生存时间</li>
+<li>clock drift:时钟漂移；指两个电脑间时间流速基本相同的情况下，两个电脑（或两个进程间）时间的差值；如果电脑距离过远会造成时钟漂移值 过大</li>
+</ol>
+<p>redis常用的方式有单节点、主从模式、哨兵模式、集群模式。<br>单节点在生产环境基本上不会使用，因为不能达到高可用，且连RDB或AOF备份都只能放在master上，所以基本上不会使用。<br>另外几种模式都无法避免两个问题：</p>
+<ol>
+<li>异步数据丢失。</li>
+<li>脑裂问题。</li>
+</ol>
+<p>最低保证分布式锁的有效性及安全性的要求如下：</p>
+<ol>
+<li>互斥；任何时刻只能有一个client获取锁</li>
+<li>释放死锁；即使锁定资源的服务崩溃或者分区，仍然能释放锁</li>
+<li>容错性；只要多数redis节点（一半以上）在使用，client就可以获取和释放锁</li>
+</ol>
+<h2 id="二、具体实现"><a href="#二、具体实现" class="headerlink" title="二、具体实现"></a>二、具体实现</h2><p>antirez提出的redlock算法大概是这样的：</p>
+<p>在Redis的分布式环境中，我们假设有N个Redis master。这些节点完全互相独立，不存在主从复制或者其他集群协调机制。我们确保将在N个实例上使用与在Redis单实例下相同方法获取和释放锁。现在我们假设有5个Redis master节点，同时我们需要在5台服务器上面运行这些Redis实例，这样保证他们不会同时都宕掉。</p>
+<p>为了取到锁，客户端应该执行以下操作:</p>
+<ul>
+<li>获取当前Unix时间，以毫秒为单位。</li>
+<li>依次尝试从5个实例，使用相同的key和具有唯一性的value（例如UUID）获取锁。当向Redis请求获取锁时，客户端应该设置一个网络连接和响应超时时间，这个超时时间应该小于锁的失效时间。例如你的锁自动失效时间为10秒，则超时时间应该在5-50毫秒之间。这样可以避免服务器端Redis已经挂掉的情况下，客户端还在死死地等待响应结果。如果服务器端没有在规定时间内响应，客户端应该尽快尝试去另外一个Redis实例请求获取锁。</li>
+<li>客户端使用当前时间减去开始获取锁时间（步骤1记录的时间）就得到获取锁使用的时间。当且仅当从大多数（N/2+1，这里是3个节点）的Redis节点都取到锁，并且使用的时间小于锁失效时间时，锁才算获取成功。</li>
+<li>如果取到了锁，key的真正有效时间等于有效时间减去获取锁所使用的时间（步骤3计算的结果）。</li>
+<li>如果因为某些原因，获取锁失败（没有在至少N/2+1个Redis实例取到锁或者取锁时间已经超过了有效时间），客户端应该在所有的Redis实例上进行解锁（即便某些Redis实例根本就没有加锁成功，防止某些节点获取到锁但是客户端没有得到响应而导致接下来的一段时间不能被重新获取锁）。</li>
+</ul>
+<h2 id="Redlock源码"><a href="#Redlock源码" class="headerlink" title="Redlock源码"></a>Redlock源码</h2><p>redisson已经有对redlock算法封装，接下来对其用法进行简单介绍，并对核心源码进行分析（假设5个redis实例）。</p>
+<ul>
+<li>POM依赖</li>
+</ul>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- https://mvnrepository.com/artifact/org.redisson/redisson --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dependency</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">groupId</span>&gt;</span>org.redisson<span class="tag">&lt;/<span class="name">groupId</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">artifactId</span>&gt;</span>redisson<span class="tag">&lt;/<span class="name">artifactId</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">version</span>&gt;</span>3.3.2<span class="tag">&lt;/<span class="name">version</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">dependency</span>&gt;</span></span><br></pre></td></tr></table></figure>
+
+<h4 id="用法"><a href="#用法" class="headerlink" title="用法"></a>用法</h4><p>首先，我们来看一下redission封装的redlock算法实现的分布式锁用法，非常简单，跟重入锁（ReentrantLock）有点类似：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line">Config config1 = <span class="keyword">new</span> Config();</span><br><span class="line">config1.useSingleServer().setAddress(<span class="string">"redis://192.168.0.1:5378"</span>)</span><br><span class="line">        .setPassword(<span class="string">"a123456"</span>).setDatabase(<span class="number">0</span>);</span><br><span class="line">RedissonClient redissonClient1 = Redisson.create(config1);</span><br><span class="line"></span><br><span class="line">Config config2 = <span class="keyword">new</span> Config();</span><br><span class="line">config2.useSingleServer().setAddress(<span class="string">"redis://192.168.0.1:5379"</span>)</span><br><span class="line">        .setPassword(<span class="string">"a123456"</span>).setDatabase(<span class="number">0</span>);</span><br><span class="line">RedissonClient redissonClient2 = Redisson.create(config2);</span><br><span class="line"></span><br><span class="line">Config config3 = <span class="keyword">new</span> Config();</span><br><span class="line">config3.useSingleServer().setAddress(<span class="string">"redis://192.168.0.1:5380"</span>)</span><br><span class="line">        .setPassword(<span class="string">"a123456"</span>).setDatabase(<span class="number">0</span>);</span><br><span class="line">RedissonClient redissonClient3 = Redisson.create(config3);</span><br><span class="line"></span><br><span class="line">String resourceName = <span class="string">"REDLOCK_KEY"</span>;</span><br><span class="line"></span><br><span class="line">RLock lock1 = redissonClient1.getLock(resourceName);</span><br><span class="line">RLock lock2 = redissonClient2.getLock(resourceName);</span><br><span class="line">RLock lock3 = redissonClient3.getLock(resourceName);</span><br><span class="line"><span class="comment">// 向3个redis实例尝试加锁</span></span><br><span class="line">RedissonRedLock redLock = <span class="keyword">new</span> RedissonRedLock(lock1, lock2, lock3);</span><br><span class="line"><span class="keyword">boolean</span> isLock;</span><br><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">    <span class="comment">// isLock = redLock.tryLock();</span></span><br><span class="line">    <span class="comment">// 500ms拿不到锁, 就认为获取锁失败。10000ms即10s是锁失效时间。</span></span><br><span class="line">    isLock = redLock.tryLock(<span class="number">500</span>, <span class="number">10000</span>, TimeUnit.MILLISECONDS);</span><br><span class="line">    System.out.println(<span class="string">"isLock = "</span>+isLock);</span><br><span class="line">    <span class="keyword">if</span> (isLock) &#123;</span><br><span class="line">        <span class="comment">//TODO if get lock success, do something;</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125; <span class="keyword">catch</span> (Exception e) &#123;</span><br><span class="line">&#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">    <span class="comment">// 无论如何, 最后都要解锁</span></span><br><span class="line">    redLock.unlock();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="唯一ID"><a href="#唯一ID" class="headerlink" title="唯一ID"></a>唯一ID</h4><p>实现分布式锁的一个非常重要的点就是set的value要具有唯一性，redisson的value是怎样保证value的唯一性呢？答案是<strong>UUID+threadId</strong>。入口在redissonClient.getLock(“REDLOCK_KEY”)，源码在Redisson.java和RedissonLock.java中：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">protected</span> <span class="keyword">final</span> UUID id = UUID.randomUUID();</span><br><span class="line"><span class="function">String <span class="title">getLockName</span><span class="params">(<span class="keyword">long</span> threadId)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> id + <span class="string">":"</span> + threadId;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="获取锁"><a href="#获取锁" class="headerlink" title="获取锁"></a>获取锁</h4><p>获取锁的代码为redLock.tryLock()或者redLock.tryLock(500, 10000, TimeUnit.MILLISECONDS)，两者的最终核心源码都是下面这段代码，只不过前者获取锁的默认租约时间（leaseTime）是LOCK_EXPIRATION_INTERVAL_SECONDS，即30s：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">&lt;T&gt; <span class="function">RFuture&lt;T&gt; <span class="title">tryLockInnerAsync</span><span class="params">(<span class="keyword">long</span> leaseTime, TimeUnit unit, <span class="keyword">long</span> threadId, RedisStrictCommand&lt;T&gt; command)</span> </span>&#123;</span><br><span class="line">    internalLockLeaseTime = unit.toMillis(leaseTime);</span><br><span class="line">    <span class="comment">// 获取锁时需要在redis实例上执行的lua命令</span></span><br><span class="line">    <span class="keyword">return</span> commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, command,</span><br><span class="line">              <span class="comment">// 首先分布式锁的KEY不能存在，如果确实不存在，那么执行hset命令（hset REDLOCK_KEY uuid+threadId 1），并通过pexpire设置失效时间（也是锁的租约时间）</span></span><br><span class="line">              <span class="string">"if (redis.call('exists', KEYS[1]) == 0) then "</span> +</span><br><span class="line">                  <span class="string">"redis.call('hset', KEYS[1], ARGV[2], 1); "</span> +</span><br><span class="line">                  <span class="string">"redis.call('pexpire', KEYS[1], ARGV[1]); "</span> +</span><br><span class="line">                  <span class="string">"return nil; "</span> +</span><br><span class="line">              <span class="string">"end; "</span> +</span><br><span class="line">              <span class="comment">// 如果分布式锁的KEY已经存在，并且value也匹配，表示是当前线程持有的锁，那么重入次数加1，并且设置失效时间</span></span><br><span class="line">              <span class="string">"if (redis.call('hexists', KEYS[1], ARGV[2]) == 1) then "</span> +</span><br><span class="line">                  <span class="string">"redis.call('hincrby', KEYS[1], ARGV[2], 1); "</span> +</span><br><span class="line">                  <span class="string">"redis.call('pexpire', KEYS[1], ARGV[1]); "</span> +</span><br><span class="line">                  <span class="string">"return nil; "</span> +</span><br><span class="line">              <span class="string">"end; "</span> +</span><br><span class="line">              <span class="comment">// 获取分布式锁的KEY的失效时间毫秒数</span></span><br><span class="line">              <span class="string">"return redis.call('pttl', KEYS[1]);"</span>,</span><br><span class="line">              <span class="comment">// 这三个参数分别对应KEYS[1]，ARGV[1]和ARGV[2]</span></span><br><span class="line">                Collections.&lt;Object&gt;singletonList(getName()), internalLockLeaseTime, getLockName(threadId));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>获取锁的命令中，</p>
+<ul>
+<li><strong>KEYS[1]</strong>就是Collections.singletonList(getName())，表示分布式锁的key，即REDLOCK_KEY；</li>
+<li><strong>ARGV[1]</strong>就是internalLockLeaseTime，即锁的租约时间，默认30s；</li>
+<li><strong>ARGV[2]</strong>就是getLockName(threadId)，是获取锁时set的唯一值，即UUID+threadId：</li>
+</ul>
+<hr>
+<h4 id="释放锁"><a href="#释放锁" class="headerlink" title="释放锁"></a>释放锁</h4><p>释放锁的代码为redLock.unlock()，核心源码如下：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">protected</span> RFuture&lt;Boolean&gt; <span class="title">unlockInnerAsync</span><span class="params">(<span class="keyword">long</span> threadId)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 释放锁时需要在redis实例上执行的lua命令</span></span><br><span class="line">    <span class="keyword">return</span> commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,</span><br><span class="line">            <span class="comment">// 如果分布式锁KEY不存在，那么向channel发布一条消息</span></span><br><span class="line">            <span class="string">"if (redis.call('exists', KEYS[1]) == 0) then "</span> +</span><br><span class="line">                <span class="string">"redis.call('publish', KEYS[2], ARGV[1]); "</span> +</span><br><span class="line">                <span class="string">"return 1; "</span> +</span><br><span class="line">            <span class="string">"end;"</span> +</span><br><span class="line">            <span class="comment">// 如果分布式锁存在，但是value不匹配，表示锁已经被占用，那么直接返回</span></span><br><span class="line">            <span class="string">"if (redis.call('hexists', KEYS[1], ARGV[3]) == 0) then "</span> +</span><br><span class="line">                <span class="string">"return nil;"</span> +</span><br><span class="line">            <span class="string">"end; "</span> +</span><br><span class="line">            <span class="comment">// 如果就是当前线程占有分布式锁，那么将重入次数减1</span></span><br><span class="line">            <span class="string">"local counter = redis.call('hincrby', KEYS[1], ARGV[3], -1); "</span> +</span><br><span class="line">            <span class="comment">// 重入次数减1后的值如果大于0，表示分布式锁有重入过，那么只设置失效时间，还不能删除</span></span><br><span class="line">            <span class="string">"if (counter &gt; 0) then "</span> +</span><br><span class="line">                <span class="string">"redis.call('pexpire', KEYS[1], ARGV[2]); "</span> +</span><br><span class="line">                <span class="string">"return 0; "</span> +</span><br><span class="line">            <span class="string">"else "</span> +</span><br><span class="line">                <span class="comment">// 重入次数减1后的值如果为0，表示分布式锁只获取过1次，那么删除这个KEY，并发布解锁消息</span></span><br><span class="line">                <span class="string">"redis.call('del', KEYS[1]); "</span> +</span><br><span class="line">                <span class="string">"redis.call('publish', KEYS[2], ARGV[1]); "</span> +</span><br><span class="line">                <span class="string">"return 1; "</span>+</span><br><span class="line">            <span class="string">"end; "</span> +</span><br><span class="line">            <span class="string">"return nil;"</span>,</span><br><span class="line">            <span class="comment">// 这5个参数分别对应KEYS[1]，KEYS[2]，ARGV[1]，ARGV[2]和ARGV[3]</span></span><br><span class="line">            Arrays.&lt;Object&gt;asList(getName(), getChannelName()), LockPubSub.unlockMessage, internalLockLeaseTime, getLockName(threadId));</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="四、相关问题"><a href="#四、相关问题" class="headerlink" title="四、相关问题"></a>四、相关问题</h2><p><strong>RedLock算法是否是异步算法？？</strong></p>
+<p>可以看成是同步算法；因为 即使进程间（多个电脑间）没有同步时钟，但是每个进程时间流速大致相同；并且时钟漂移相对于TTL叫小，可以忽略，所以可以看成同步算法；（不够严谨，算法上要算上时钟漂移，因为如果两个电脑在地球两端，则时钟漂移非常大）</p>
+<p><strong>RedLock失败重试</strong></p>
+<p>当client不能获取锁时，应该在随机时间后重试获取锁；并且最好在同一时刻并发的把set命令发送给所有redis实例；而且对于已经获取锁的client在完成任务后要及时释放锁，这是为了节省时间；</p>
+<p><strong>RedLock释放锁</strong></p>
+<p>由于释放锁时会判断这个锁的value是不是自己设置的，如果是才删除；所以在释放锁时非常简单，只要向所有实例都发出释放锁的命令，不用考虑能否成功释放锁；</p>
+<p><strong>RedLock注意点（Safety arguments）:</strong></p>
+<ol>
+<li><p>先假设client获取所有实例，所有实例包含相同的key和过期时间(TTL) ,但每个实例set命令时间不同导致不能同时过期，第一个set命令之前是T1,最后一个set命令后为T2,则此client有效获取锁的最小时间为TTL-(T2-T1)-时钟漂移;</p>
+</li>
+<li><p>对于以N/2+ 1(也就是一半以 上)的方式判断获取锁成功，是因为如果小于一半判断为成功的话，有可能出现多个client都成功获取锁的情况， 从而使锁失效</p>
+</li>
+<li><p>一个client锁定大多数事例耗费的时间大于或接近锁的过期时间，就认为锁无效，并且解锁这个redis实例(不执行业务) ;只要在TTL时间内成功获取一半以上的锁便是有效锁;否则无效</p>
+</li>
+</ol>
+<p><strong>系统有活性的三个特征</strong></p>
+<ol>
+<li><p>能够自动释放锁</p>
+</li>
+<li><p>在获取锁失败（不到一半以上），或任务完成后 能够自动释放锁，不用等到其自动过期</p>
+</li>
+<li><p>在client重试获取哦锁前（第一次失败到第二次重试时间间隔）大于第一次获取锁消耗的时间；</p>
+</li>
+<li><p>重试获取锁要有一定次数限制</p>
+</li>
+</ol>
+<p><strong>RedLock性能及崩溃恢复的相关解决方法</strong></p>
+<ol>
+<li><p>如果redis没有持久化功能，在clientA获取锁成功后，所有redis重启，clientB能够再次获取到锁，这样违法了锁的排他互斥性;</p>
+</li>
+<li><p>如果启动AOF永久化存储，事情会好些， 举例:当我们重启redis后，由于redis过期机制是按照unix时间戳走的，所以在重启后，然后会按照规定的时间过期，不影响业务;但是由于AOF同步到磁盘的方式默认是每秒-次，如果在一秒内断电，会导致数据丢失，立即重启会造成锁互斥性失效;但如果同步磁盘方式使用Always(每一个写命令都同步到硬盘)造成性能急剧下降;所以在锁完全有效性和性能方面要有所取舍; </p>
+</li>
+<li><p>有效解决既保证锁完全有效性及性能高效及即使断电情况的方法是redis同步到磁盘方式保持默认的每秒，在redis无论因为什么原因停掉后要等待TTL时间后再重启(学名:<strong>延迟重启</strong>) ;缺点是 在TTL时间内服务相当于暂停状态;</p>
+</li>
+</ol>
+<h2 id="五、总结"><a href="#五、总结" class="headerlink" title="五、总结"></a>五、总结</h2><ol>
+<li>TTL时长 要大于正常业务执行的时间+获取所有redis服务消耗时间+时钟漂移</li>
+<li>获取redis所有服务消耗时间要 远小于TTL时间，并且获取成功的锁个数要 在总数的一般以上:N/2+1</li>
+<li>尝试获取每个redis实例锁时的时间要 远小于TTL时间</li>
+<li>尝试获取所有锁失败后 重新尝试一定要有一定次数限制</li>
+<li>在redis崩溃后（无论一个还是所有），要延迟TTL时间重启redis</li>
+<li>在实现多redis节点时要结合单节点分布式锁算法 共同实现</li>
+</ol>
+
+  </section>
+  <footer class="post-footer">
+    <!--
+    <section class="author">
+      <h4>Skyfire Lee</h4>
+      <p></p>
+    </section>
+    -->
+  </footer>
+</article>
+
+<nav class="pagination" role="pagination">
+    
+    <a class="newer-posts" href="/2021/09/14/re0-mysql/">
+        ← prev <!--从0开始的Mysql学习-->
+    </a>
+    
+    <span class="page-number">•</span>
+    
+    <a class="older-posts" href="/2021/09/14/re0-redis-struct/">
+        <!--Redis数据类型--> next →
+    </a>
+    
+</nav>
+
+
+        </main>
+        <footer id="footer">
+            <section id="footer-message">&copy; 2022 Skyfire Lee. All rights reserved. Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>. <a href="https://github.com/guolin/crisp-hexo-theme" target="_blank">crisp</a> theme by <a href="guolin.github.io" target="_blank">Guo Lin</a>.</section>
+        </footer>
+    </body>
+</html>
+
+

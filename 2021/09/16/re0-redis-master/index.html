@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+    <head>
+		
+        <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+        <meta name="description" content="">
+        <link rel="shortcut icon" href="/asset/guolin.png"/>
+        <link rel="canonical" href="http://guolinn.com/">
+        <link rel="alternate" type="application/rss+xml" title="Skyfire Lee" href="/atom.xml">
+        <title>主从复制数据同步 | Artikell</title>
+        <meta name="description" content="{{meta_description}}">
+
+        <link href="//cdn.bootcss.com/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet">
+        <link rel="stylesheet" type="text/css" href="/styles/crisp.css">
+        <meta name="HandheldFriendly" content="True" />
+        <meta name="MobileOptimized" content="320" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+        <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+        <![endif]-->
+
+    <meta name="generator" content="Hexo 4.2.1"></head>
+    
+		<body class="post-template">
+	
+
+        <header id="header">
+            <a id="logo" href="/"><img src="/asset/guolin.png" alt="Artikell" /></a>
+            <h1><a href="/">Skyfire Lee</a></h1>
+            <p></p>
+            <div id="follow-icons">
+                  <a href="/atom.xml"><i class="fa fa-rss-square fa-2x"></i></a>
+  </div>
+<h6><a href="/about">About</a></h6>
+        </header>
+
+        <main id="content">
+        
+
+<article class="post">
+  九月 16, 2021
+  
+    <span class="taglist">  &middot; 
+    
+    
+      <a href='/tags/从0开始的Redis/'>从0开始的Redis</a> 
+    
+    </span>
+  
+
+  <h1 class="post-title">主从复制数据同步</h1>
+  <section class="post-content article-entry">
+    <h2 id="零、从问题出发"><a href="#零、从问题出发" class="headerlink" title="零、从问题出发"></a>零、从问题出发</h2><h2 id="一、前言"><a href="#一、前言" class="headerlink" title="一、前言"></a>一、前言</h2><p>这篇开始要进入Redis集群的技术研究了，我们按照顺序会至少分四部分来介绍：<strong>主从复制、哨兵模式、Gossip协议和一致性哈希以及Redis集群</strong>。<strong>主从复制</strong>是高可用的基石，<strong>哨兵模式</strong>提供了主从架构中的自动故障恢复能力， <strong>Gossip协议和一致性哈希</strong>提供了集群中新加入节点和退出节点的发现以及节点加入或退出引起的数据重分配，最后基于上述的几个核心技术实现了高可用的<strong>Redis集群</strong>。</p>
+<p>Redis作为一个内存数据库，使用主从架构的最核心的目的便是提供数据冗余备份，以防止一个Redis节点Down掉之后其中的数据也被丢失，而作为冗余备份，主从节点最重要的工作便是数据同步。那么本篇着重介绍的便是Redis的数据同步策略，包括主从节点首次建立连接后的<strong>全量复制</strong>以及从节点短暂断连后的数据<strong>部分复制。</strong>主要内容分为</p>
+<ol>
+<li><strong>Redis主从复制概述</strong></li>
+<li><strong>Redis主从数据同步</strong></li>
+<li><strong>Redis读写分离实现以及过期数据处理</strong></li>
+<li><strong>结语</strong></li>
+</ol>
+<h2 id="二、Redis主从复制概述"><a href="#二、Redis主从复制概述" class="headerlink" title="二、Redis主从复制概述"></a>二、Redis主从复制概述</h2><p>主从复制，是指将一台Redis服务器的数据复制到其他的Redis服务器，前者称为主节点(master/leader)，后者称为从节点(slave/follower)。一个主节点可以有多个从节点(或没有从节点)，但一个从节点只能有一个主节点，同时每个从节点也可以是别的从节点的父节点，即主从节点连接形成树结构。</p>
+<p><img src="https://p.pstatp.com/origin/pgc-image/4ae244e1829440078351db7231a1a9d6" alt="主从复制过程"></p>
+<p>主从复制的发起都是在子节点发起，当节点127.0.0.1:6380中使用salveof 127.0.0.1 6379后，6380节点与6379节点的数据复制过程如下图所示。</p>
+<p><strong>主从结构中数据的复制是单向的，只能由主节点到从节点</strong>，所有的内存变更，即数据的增删改都只能在主节点上进行，从节点通过同步的方式完成修改。默认情况下，从节点对非Master节点客户端是只读的。Redis使用主从复制的作用有：</p>
+<ol>
+<li><strong>数据冗余</strong>：实现数据冗余备份，这样一台节点挂了之后，其上的数据不至于丢失。</li>
+<li><strong>故障恢复</strong>：当主节点出现问题时，其从节点可以被提升为主节点继续提供服务，实现快速的故障恢复；</li>
+<li><strong>负载均衡</strong>：在主从复制的基础上，配合读写分离，可以由主节点提供写服务，由从节点提供读服务（即写Redis数据时应用连接主节点，读Redis数据时应用连接从节点），分担服务器负载；尤其是在写少读多的场景下，通过多个从节点分担读负载，可以大大提高Redis服务器的并发量。</li>
+</ol>
+<h2 id="三、数据同步"><a href="#三、数据同步" class="headerlink" title="三、数据同步"></a>三、数据同步</h2><p>接下来进入本文的重点——Redis主从节点的数据同步。作为内存数据库，Redis主从结构的核心目的在于数据备份。当节点A对节点B发起复制时，最直接的做法就是把节点B的内存数据生成快照文件（RDB）然后发送给节点A，节点A接收到RDB文件后将文件中的数据恢复到内存中，这就是<strong>全量复制</strong>。</p>
+<p><img src="https://pic1.zhimg.com/80/v2-12a31457508682daabc7ea4f1c2e455c_720w.jpg" alt="img"></p>
+<h2 id="四、全量复制"><a href="#四、全量复制" class="headerlink" title="四、全量复制"></a>四、全量复制</h2><p>在Redis(1)中我们介绍过为了保障进程挂掉之后数据不至于丢失，Redis采用了RDB持久化和AOF持久化两种策略，这样当Redis重启后便可以从RDB文件或者AOF文件中恢复出数据。<strong>而全量复制的核心就是把Master节点当前的数据全部发送给子节点</strong>，那么显然，只要我们把Master节点的RDB文件或者AOF文件发给Slave节点就可以。这样Slave节点接收到文件之后就可以从文件中恢复出Master节点的数据。当然，为了保证主从节点一致，Slave节点从持久化文件中恢复数据之前首先应该清空自己内存中的所有数据。Redis提供了两种数据同步方式:RDB_CHILD_TYPE_DISK和RDB_CHILD_TYPE_SOCKET。所谓RDB_CHILD_TYPE_DISK就是将内存数据写入磁盘文件中，然后将磁盘文件发送给Slave节点, RDB_CHILD_TYPE_SOCKET即直接把内存数据写入Slave节点的socket文件进行发送而不需要先写入磁盘。由于不需要落盘，RDB_CHILD_TYPE_DISK的方式速度会更快，但是如果Master节点采用RDB_CHILD_TYPE_SOCKET向Slave节点发送数据时有新的节点发起数据同步请求，那么Master节点就需要重新再为新的Slave节点重新同步，而采用RDB_CHILD_TYPE_DISK生成RDB文件时如果有新的Slave节点加入数据复制，并不会引发新的RDB文件生成过程。二者各有利弊，但一般情况下我们会采用基于RDB_CHILD_TYPE_DISK的方式进行数据同步，同时也是限于篇幅，接下来的介绍中以RDB_CHILD_TYPE_DISK为主。</p>
+<p><a href="https://zhuanlan.zhihu.com/p/94680529" target="_blank" rel="noopener">大龙：Redis详解（1）——为什么我们都需要了解Redis47 赞同 · 2 评论文章<img src="https://pic3.zhimg.com/v2-d7454c387a1257b6f819bb251b0a121e_180x120.jpg" alt="img"></a></p>
+<p>在Redis的源码实现中。<strong><em>replicationCron</em></strong>函数被每秒调用一次。函数中会每次都会去判断是否有Slave节点处于等待数据同步的状态。如果有，则开始进行全量复制。 全量复制首先fork一个子进程调用<strong><em>rdbSave</em></strong>函数生成RDB文件，生成结束后调用回调函数<strong><em>updateSlavesWaitingBgsave</em></strong>将RDB文件发送给所有的Slave节点完成了同步过程。由于这部分实现代码非常的多，我就在下面把路径中的每个函数进行了大幅删减，主要展示整个过程中的函数调用关系，方便大家对着源代码阅读，大家从上往下读即可。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// replication.c</span></span><br><span class="line"><span class="comment">// replicationCron函数每秒调用一次，代码被删减</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">replicationCron</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="comment">/* Redis至多只允许一个子进程运行，而Master节点进行全量复制时需要fork一个子进程来进行RDB文件的生成*/</span></span><br><span class="line">    <span class="keyword">if</span> (!hasActiveChildProcess()) &#123;</span><br><span class="line">        <span class="keyword">time_t</span> idle, max_idle = <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">int</span> slaves_waiting = <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">int</span> mincapa = <span class="number">-1</span>;</span><br><span class="line">        listNode *ln;</span><br><span class="line">        listIter li;</span><br><span class="line">        <span class="comment">// 统计子节点中有多少个节点正在等待全量数据复制</span></span><br><span class="line">        listRewind(server.slaves,&amp;li);</span><br><span class="line">        <span class="keyword">while</span>((ln = listNext(&amp;li))) &#123;</span><br><span class="line">            client *slave = ln-&gt;value;</span><br><span class="line">            <span class="keyword">if</span> (slave-&gt;replstate == SLAVE_STATE_WAIT_BGSAVE_START) &#123;</span><br><span class="line">                idle = server.unixtime - slave-&gt;lastinteraction;</span><br><span class="line">                <span class="keyword">if</span> (idle &gt; max_idle) max_idle = idle;</span><br><span class="line">                slaves_waiting++;</span><br><span class="line">                mincapa = (mincapa == <span class="number">-1</span>) ? slave-&gt;slave_capa :</span><br><span class="line">                                            (mincapa &amp; slave-&gt;slave_capa);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 如果有子节点在等待，则开始进行全量复制</span></span><br><span class="line">        <span class="keyword">if</span> (slaves_waiting )</span><br><span class="line">        &#123;</span><br><span class="line">            startBgsaveForReplication(mincapa);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">startBgsaveForReplication</span><span class="params">(<span class="keyword">int</span> mincapa)</span> </span>&#123;</span><br><span class="line">  </span><br><span class="line">   <span class="keyword">int</span> reval = rdbSaveBackground(server.rdb_filename,rsiptr);</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">rdbSaveBackground</span><span class="params">(<span class="keyword">char</span> *filename, rdbSaveInfo *rsi)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">pid_t</span> childpid;</span><br><span class="line">    <span class="comment">// fork一个子进程用于生成RDB文件</span></span><br><span class="line">    <span class="keyword">if</span> ((childpid = redisFork()) == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">int</span> retval = rdbSave(filename,rsi);</span><br><span class="line">    &#125; </span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* 生成RDB文件*/</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">rdbSave</span><span class="params">(<span class="keyword">char</span> *filename, rdbSaveInfo *rsi)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 省略代码...</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* 当RDB文件生成结束后，根据同步的方式来调用对应的回调函数 */</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">backgroundSaveDoneHandler</span><span class="params">(<span class="keyword">int</span> exitcode, <span class="keyword">int</span> bysignal)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">switch</span>(server.rdb_child_type) &#123;</span><br><span class="line">    <span class="keyword">case</span> RDB_CHILD_TYPE_DISK:</span><br><span class="line">        backgroundSaveDoneHandlerDisk(exitcode,bysignal);</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">case</span> RDB_CHILD_TYPE_SOCKET:</span><br><span class="line">        backgroundSaveDoneHandlerSocket(exitcode,bysignal);</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">default</span>:</span><br><span class="line">        serverPanic(<span class="string">"Unknown RDB child type."</span>);</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 基于RDB_CHILD_TYPE_DISK的回调函数中向所有 Slave节点发送RDB文件。</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">backgroundSaveDoneHandlerDisk</span><span class="params">(<span class="keyword">int</span> exitcode, <span class="keyword">int</span> bysignal)</span> </span>&#123;</span><br><span class="line">   updateSlavesWaitingBgsave((!bysignal &amp;&amp; exitcode == <span class="number">0</span>) ? C_OK : C_ERR, RDB_CHILD_TYPE_DISK);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>全量复制的介绍就到这里，那么这里有一个问题是：全量复制只是复制了T1时刻Master节点的数据快照，那么之后客户端向Master节点的写入数据该如何同步给Slave节点？第一种显然的做法就是开启定时任务，每隔T时间就进行一次全量复制，完成一上面的所有操作即可。但是全量复制实际上是个成本很高的操作，大致分为如下几步：</p>
+<ol>
+<li>Master节点开启子进程进行RDB文件生成</li>
+<li>Master节点将RDB文件发送给Slave节点</li>
+<li>Slave节点清空内存中的所有数据并删除之前的RDB文件</li>
+<li>Slave节点使用从Master接收的RDB文件恢复数据到内存中</li>
+</ol>
+<p>整个过程每一步都是耗时间的IO操作，比如Master节点在T1时刻开始RDB文件的生成，一直到T2时刻Slave节点才能完成数据载入。在网络环境较差或者IO能力较弱的情况下，上述的操作不仅耗时久，而且会因此导致主从节点数据延迟比较大（因为耗时，所以T会设置的比较大）。那么Redis为了解决这个问题，提出的解决方案是<strong>命令传播+增量复制。</strong></p>
+<h2 id="五、命令传播"><a href="#五、命令传播" class="headerlink" title="五、命令传播"></a>五、命令传播</h2><p>所谓命令传播当Master节点每处理完一个命令都会把命令广播给所有的子节点，而每个子节点接收到Master的广播过来的命令后，会在处理完之后继续广播给自己的子节点。需要注意的是，Redis的命令广播是异步的操作。即Master节点处理完客户端的命令之后会立马向客户端返回结果，而不会一直等待所有的子节点都确认完成操作后再返回以保证Redis高效的性能。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">processInputBufferAndReplicate</span><span class="params">(client *c)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 处理命令然后广播命令</span></span><br><span class="line">    <span class="comment">// if this is a slave, we just process the commands</span></span><br><span class="line">    <span class="keyword">if</span> (!(c-&gt;flags &amp; CLIENT_MASTER)) &#123;</span><br><span class="line">        processInputBuffer(c);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">/* If the client is a master we need to compute the difference</span></span><br><span class="line"><span class="comment">         * between the applied offset before and after processing the buffer,</span></span><br><span class="line"><span class="comment">         * to understand how much of the replication stream was actually</span></span><br><span class="line"><span class="comment">         * applied to the master state: this quantity, and its corresponding</span></span><br><span class="line"><span class="comment">         * part of the replication stream, will be propagated to the</span></span><br><span class="line"><span class="comment">         * sub-replicas and to the replication backlog. */</span></span><br><span class="line">        <span class="keyword">size_t</span> prev_offset = c-&gt;reploff;</span><br><span class="line">        processInputBuffer(c);</span><br><span class="line">        <span class="comment">// applied is how much of the replication stream was actually applied to the master state</span></span><br><span class="line">        <span class="keyword">size_t</span> applied = c-&gt;reploff - prev_offset;</span><br><span class="line">        <span class="keyword">if</span> (applied) &#123;</span><br><span class="line"></span><br><span class="line">            replicationFeedSlavesFromMasterStream(server.slaves,</span><br><span class="line">                    c-&gt;pending_querybuf, applied);</span><br><span class="line">            sdsrange(c-&gt;pending_querybuf,applied,<span class="number">-1</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>那么紧接着的另一个问题是，<strong>如果某一个子节点A短暂的断连了T秒，那么A再次恢复连接之后该如何同步数据呢？</strong>Redis选择的做法是开辟一个缓冲区（默认大小是1M)，每次处理完命令之后，先写入缓冲区repl_backlog, 然后再发送给子节点。这就是增量复制（也叫部分复制）。但是缓冲区能保存的命令有限，只能至多保存的命令长度为repl_backlog_length，如果某个子节点落后当前最新命令的长度大于了repl_backlog_length，那么就会触发全量复制。</p>
+<h2 id="六、读写分离和过期数据"><a href="#六、读写分离和过期数据" class="headerlink" title="六、读写分离和过期数据"></a>六、读写分离和过期数据</h2><p>主从复制的一大用处就是可以拓展单节点的读写性能，但是由于Redis中主从节点的数据复制时单向的，所以从节点对外是只读状态，而主节点是可读可写的状态。在读请求占比比较大的时候，让从节点参与响应读请求可以有效的分摊Master节点的压力。但是需要注意的是，由于主从节点之间可能存在数据的延迟，导致从子节点读到的数据可能是过期数据。其中一个典型的场景就是过期数据未能及时清理。由于数据的单向复制，子节点在Master节点不告知的情况下不会主动进行任何内存变更的操作，涉及到数据过期时，Redis采用的做法是当Master节点判断某个key过期了之后会向子节点发送DEL命令删除掉数据。但是如果期间由于网络环境或其他问题导致DEL命令未及时到达子节点，那么用户此时从子节点读到的数据就是本应已过期被删除的数据。为了解决这个问题，Redis从3.2版本之后，子节点也可以主动判断用户请求的键是否已经过期。如果过期，则就不向用户返回结果，但是并不会直接删除数据。删除数据的操作仍然是只会由Master节点的同步引起。这实际上是对主从的时钟同步是有要求的，绝大部分情况下这个先决条件还是能够被满足的。</p>
+<h2 id="七、结语"><a href="#七、结语" class="headerlink" title="七、结语"></a>七、结语</h2><p>本文介绍了着重介绍了Redis主从复制的全量复制和部分复制，并简单的介绍了Redis主从分离对单点读写性能的扩展以及面临的数据延迟中的典型代表：数据过期问题。希望能对大家有所帮助。</p>
+<h2 id="八、后记"><a href="#八、后记" class="headerlink" title="八、后记"></a>八、后记</h2><p>这篇文章写的真的是一坨翔，回到家专心工作比较艰难，都是零敲碎打的写东西。但是为了能不断更，所以也就硬着头皮往下写了。写之前看了很多资料，都是介绍了原理性的内容，自己不是很满意，于是就想读源码，从实现的角度来更详细的介绍主从复制。读完后才发现，从代码实现上讲并不会增加更多的细节，反而容易让读者抓不住重点。下次写就只写一个聚焦的话题，回北京之前不会再写这种涉及话题比较多的内容了。</p>
+<h2 id="相关链接"><a href="#相关链接" class="headerlink" title="相关链接"></a>相关链接</h2><ul>
+<li><a href="https://zhuanlan.zhihu.com/p/102859170" target="_blank" rel="noopener">Redis集群——主从复制数据同步 - 知乎</a></li>
+</ul>
+
+  </section>
+  <footer class="post-footer">
+    <!--
+    <section class="author">
+      <h4>Skyfire Lee</h4>
+      <p></p>
+    </section>
+    -->
+  </footer>
+</article>
+
+<nav class="pagination" role="pagination">
+    
+    <a class="newer-posts" href="/2021/09/16/re0-redis-pipeline/">
+        ← prev <!--Redis的Pipeline-->
+    </a>
+    
+    <span class="page-number">•</span>
+    
+    <a class="older-posts" href="/2021/09/15/re0-golang/">
+        <!--从0开始的golang学习--> next →
+    </a>
+    
+</nav>
+
+
+        </main>
+        <footer id="footer">
+            <section id="footer-message">&copy; 2022 Skyfire Lee. All rights reserved. Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>. <a href="https://github.com/guolin/crisp-hexo-theme" target="_blank">crisp</a> theme by <a href="guolin.github.io" target="_blank">Guo Lin</a>.</section>
+        </footer>
+    </body>
+</html>
+
+

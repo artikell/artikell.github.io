@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+    <head>
+		
+        <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+        <meta name="description" content="">
+        <link rel="shortcut icon" href="/asset/guolin.png"/>
+        <link rel="canonical" href="http://guolinn.com/">
+        <link rel="alternate" type="application/rss+xml" title="Skyfire Lee" href="/atom.xml">
+        <title>Redis淘汰机制 | Artikell</title>
+        <meta name="description" content="{{meta_description}}">
+
+        <link href="//cdn.bootcss.com/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet">
+        <link rel="stylesheet" type="text/css" href="/styles/crisp.css">
+        <meta name="HandheldFriendly" content="True" />
+        <meta name="MobileOptimized" content="320" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+        <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+        <![endif]-->
+
+    <meta name="generator" content="Hexo 4.2.1"></head>
+    
+		<body class="post-template">
+	
+
+        <header id="header">
+            <a id="logo" href="/"><img src="/asset/guolin.png" alt="Artikell" /></a>
+            <h1><a href="/">Skyfire Lee</a></h1>
+            <p></p>
+            <div id="follow-icons">
+                  <a href="/atom.xml"><i class="fa fa-rss-square fa-2x"></i></a>
+  </div>
+<h6><a href="/about">About</a></h6>
+        </header>
+
+        <main id="content">
+        
+
+<article class="post">
+  九月 17, 2021
+  
+    <span class="taglist">  &middot; 
+    
+    
+      <a href='/tags/从0开始的Redis/'>从0开始的Redis</a> 
+    
+    </span>
+  
+
+  <h1 class="post-title">Redis淘汰机制</h1>
+  <section class="post-content article-entry">
+    <h1 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h1><p>Redis是基于内存存储，常用于数据的缓存，所以Redis提供了对键的过期时间的设置，实现了几种淘汰机制便于适应各种场景。</p>
+<hr>
+<p><strong>设置过期时间</strong><br>我们可以在设置键时设置expire time，也可以在运行时给存在的键设置剩余的生存时间，不设置则默认为-1，设置为-1时表示永久存储。</p>
+<h1 id="Redis清除过期Key的方式"><a href="#Redis清除过期Key的方式" class="headerlink" title="Redis清除过期Key的方式"></a>Redis清除过期Key的方式</h1><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">定期删除+惰性删除</span><br></pre></td></tr></table></figure>
+
+<h2 id="定期删除"><a href="#定期删除" class="headerlink" title="定期删除"></a>定期删除</h2><p>Redis设定每隔100ms<code>随机</code>抽取设置了过期时间的key，并对其进行检查，如果已经过期则删除。<br><strong>为什么是随机抽取？</strong> 因为如果存储了大量数据，全部遍历一遍是非常影响性能的！</p>
+<h2 id="惰性删除"><a href="#惰性删除" class="headerlink" title="惰性删除"></a>惰性删除</h2><p>每次获取key时会对key进行判断是否还存活，如果已经过期了则删除。</p>
+<hr>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">注意：Redis中过期的key并不会马上删除，因为定期删除可能正好没抽取到它，我们也没有访问它触发惰性删除</span><br></pre></td></tr></table></figure>
+
+<h1 id="Redis内存淘汰机制"><a href="#Redis内存淘汰机制" class="headerlink" title="Redis内存淘汰机制"></a>Redis内存淘汰机制</h1><p>思考一下，如果定期删除漏掉了很多过期的key，而我们也没有再去访问它，如果不加处理，很可能导致内存耗尽。</p>
+<hr>
+<p>Redis配置文件中可以设置maxmemory，内存的最大使用量，到达限度时会执行<code>内存淘汰机制</code>。</p>
+<p><strong>Redis中的内存淘汰机制：</strong></p>
+<p>没有配置时，<code>默认为no-eviction</code></p>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>volatile-lru</td>
+<td>从已设置过期时间的数据集中挑选<code>最近最少使用</code>的数据淘汰</td>
+</tr>
+<tr>
+<td>volatile-lfu</td>
+<td>从已设置过期时间的数据集中挑选<code>最不经常</code>使用的数据淘汰</td>
+</tr>
+<tr>
+<td>volatile-ttl</td>
+<td>从已设置过期时间的数据集中挑选<code>将要过期</code>的数据淘汰</td>
+</tr>
+<tr>
+<td>volatile-random</td>
+<td>从已设置过期时间的数据集中挑选<code>任意数据</code>淘汰</td>
+</tr>
+<tr>
+<td>allkeys-lru</td>
+<td>当内存不足写入新数据时淘汰最近最少使用的Key</td>
+</tr>
+<tr>
+<td>allkeys-random</td>
+<td>当内存不足写入新数据时随机选择key淘汰</td>
+</tr>
+<tr>
+<td>allkeys-lfu</td>
+<td>当内存不足写入新数据时移除最不经常使用的Key</td>
+</tr>
+<tr>
+<td>no-eviction</td>
+<td>当内存不足写入新数据时，写入操作会报错，同时不删除数据</td>
+</tr>
+</tbody></table>
+<ul>
+<li>volatile为前缀的策略都是从已过期的数据集中进行淘汰。</li>
+<li>allkeys为前缀的策略都是面向所有key进行淘汰。</li>
+<li>LRU（least recently used）最近最少用到的。</li>
+<li>LFU（Least Frequently Used）最不常用的。</li>
+<li>它们的触发条件都是Redis使用的内存达到阈值时。</li>
+</ul>
+<h2 id="相关链接"><a href="#相关链接" class="headerlink" title="相关链接"></a>相关链接</h2><ul>
+<li><a href="https://blog.csdn.net/weixin_43184769/article/details/90523923" target="_blank" rel="noopener">https://blog.csdn.net/weixin_43184769/article/details/90523923</a></li>
+</ul>
+
+  </section>
+  <footer class="post-footer">
+    <!--
+    <section class="author">
+      <h4>Skyfire Lee</h4>
+      <p></p>
+    </section>
+    -->
+  </footer>
+</article>
+
+<nav class="pagination" role="pagination">
+    
+    <a class="newer-posts" href="/2021/09/27/note-framework-0/">
+        ← prev <!--读书笔记：从0开始学框架-->
+    </a>
+    
+    <span class="page-number">•</span>
+    
+    <a class="older-posts" href="/2021/09/16/re0-redis-pipeline/">
+        <!--Redis的Pipeline--> next →
+    </a>
+    
+</nav>
+
+
+        </main>
+        <footer id="footer">
+            <section id="footer-message">&copy; 2022 Skyfire Lee. All rights reserved. Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>. <a href="https://github.com/guolin/crisp-hexo-theme" target="_blank">crisp</a> theme by <a href="guolin.github.io" target="_blank">Guo Lin</a>.</section>
+        </footer>
+    </body>
+</html>
+
+
