@@ -57,11 +57,13 @@ Redis配置文件中可以设置maxmemory，内存的最大使用量，到达限
 | allkeys-lfu     | 当内存不足写入新数据时移除最不经常使用的Key              |
 | no-eviction     | 当内存不足写入新数据时，写入操作会报错，同时不删除数据   |
 
-- volatile为前缀的策略都是从已过期的数据集中进行淘汰。
-- allkeys为前缀的策略都是面向所有key进行淘汰。
-- LRU（least recently used）最近最少用到的。
-- LFU（Least Frequently Used）最不常用的。
-- 它们的触发条件都是Redis使用的内存达到阈值时。
+
+其中相关的特征：
+- volatile为前缀的策略都是从已过期的数据集中进行淘汰
+- allkeys为前缀的策略都是面向所有key进行淘汰
+- LRU（least recently used）最近最少用到的
+- LFU（Least Frequently Used）最不常用的
+- 它们的触发条件都是Redis使用的内存达到阈值时
 
 ## 相关链接
 - https://blog.csdn.net/weixin_43184769/article/details/90523923
