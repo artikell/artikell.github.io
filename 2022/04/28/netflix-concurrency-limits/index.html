@@ -84,6 +84,12 @@
 
 <h2 id="Executor"><a href="#Executor" class="headerlink" title="Executor"></a>Executor</h2><p>The BlockingAdaptiveExecutor adapts the size of an internal thread pool to match the concurrency limit based on measured latencies of Runnable commands and will block when the limit has been reached.<br>BlockingAdaptiveExecutor根据可运行命令的测量延迟调整内部线程池的大小以匹配并发限制，并在达到限制时进行阻塞。</p>
 <figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">drainQueue</span><span class="params">(Queue&lt;Runnable&gt; tasks)</span> </span>&#123;</span><br><span class="line">    Executor executor = <span class="keyword">new</span> BlockingAdaptiveExecutor(</span><br><span class="line">        SimpleLimiter.newBuilder()</span><br><span class="line">            .build());</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">while</span> (<span class="keyword">true</span>) &#123;</span><br><span class="line">        executor.execute(tasks.take());</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="Reference"><a href="#Reference" class="headerlink" title="Reference"></a>Reference</h2><ul>
+<li><a href="https://www.panaihua.com/concurrency-limits/" target="_blank" rel="noopener">自适应限流 netflix-concurrency-limits | 人淡如菊</a></li>
+<li><a href="https://www.bilibili.com/video/BV1vJ41127p2" target="_blank" rel="noopener">#68 网络知识十全大补丸 【 Go 夜读 】_哔哩哔哩_bilibili</a></li>
+</ul>
+
   </section>
   <footer class="post-footer">
     <!--
