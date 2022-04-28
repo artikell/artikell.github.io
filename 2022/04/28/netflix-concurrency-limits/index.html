@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+    <head>
+		
+        <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+        <meta name="description" content="">
+        <link rel="shortcut icon" href="/asset/guolin.png"/>
+        <link rel="canonical" href="http://guolinn.com/">
+        <link rel="alternate" type="application/rss+xml" title="Skyfire Lee" href="/atom.xml">
+        <title>netflix-concurrency-limits | Artikell</title>
+        <meta name="description" content="{{meta_description}}">
+
+        <link href="//cdn.bootcss.com/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet">
+        <link rel="stylesheet" type="text/css" href="/styles/crisp.css">
+        <meta name="HandheldFriendly" content="True" />
+        <meta name="MobileOptimized" content="320" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+        <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+        <![endif]-->
+
+    <meta name="generator" content="Hexo 4.2.1"></head>
+    
+		<body class="post-template">
+	
+
+        <header id="header">
+            <a id="logo" href="/"><img src="/asset/guolin.png" alt="Artikell" /></a>
+            <h1><a href="/">Skyfire Lee</a></h1>
+            <p></p>
+            <div id="follow-icons">
+                  <a href="/atom.xml"><i class="fa fa-rss-square fa-2x"></i></a>
+  </div>
+<h6><a href="/about">About</a></h6>
+        </header>
+
+        <main id="content">
+        
+
+<article class="post">
+  四月 28, 2022
+  
+
+  <h1 class="post-title">netflix-concurrency-limits</h1>
+  <section class="post-content article-entry">
+    <h1 id="Overview"><a href="#Overview" class="headerlink" title="Overview"></a>Overview</h1><p>Java Library that implements and integrates concepts from TCP congestion control to auto-detect concurrency limits for services in order to achieve optimal throughput with optimal latency.<br>Java库，它实现并集成了TCP拥塞控制、自动检测服务并发限制等概念，以实现最佳吞吐量和最佳延迟。</p>
+<h1 id="Background"><a href="#Background" class="headerlink" title="Background"></a>Background</h1><p>When thinking of service availability operators traditionally think in terms of RPS (requests per second). Stress tests are normally performed to determine the RPS at which point the service tips over. RPS limits are then set somewhere below this tipping point (say 75% of this value) and enforced via a token bucket. However, in large distributed systems that auto-scale this value quickly goes out of date and the service falls over by becoming non-responsive as it is unable to gracefully shed excess load. Instead of thinking in terms of RPS, we should be thinking in terms of concurrent request where we apply queuing theory to determine the number of concurrent requests a service can handle before a queue starts to build up, latencies increase and the service eventually exhausts a hard limit such as CPU, memory, disk or network. This relationship is covered very nicely with Little’s Law where <code>Limit = Average RPS * Average Latency</code>.</p>
+<p>在考虑服务可用性时，运营商通常会考虑RPS（每秒请求数）。压力测试通常是为了确定服务结束时的RPS。然后将RPS限制设置在该临界点以下的某个位置（比如该值的75%），并通过令牌桶强制执行。然而，在自动扩展的大型分布式系统中，这个值很快就过时了，服务变得不响应，因为它无法正常地释放多余的负载。我们不应该从RPS的角度来考虑，而应该从并发请求的角度来考虑，在队列开始建立、延迟增加以及服务最终耗尽CPU、内存、磁盘或网络等硬限制之前，我们应用排队论来确定服务可以处理的并发请求数。利特尔定律很好地描述了这种关系，其中“极限=平均RPS*平均延迟”。</p>
+<p>Concurrency limits are very easy to enforce but difficult to determine as they would require operators to fully understand the hardware services run on and coordinate how they scale. Instead we’d prefer to measure or estimate the concurrency limits at each point in the network.  As systems scale and hit limits each node will adjust and enforce its local view of the limit. To estimate the limit we borrow from common TCP congestion control algorithms by equating a system’s concurrency limit to a TCP congestion window.</p>
+<p>并发限制很容易实施，但很难确定，因为它们要求运营商充分了解硬件服务的运行情况，并协调它们的扩展方式。相反，我们更愿意测量或估计网络中每个点的并发限制。随着系统的扩展和命中极限，每个节点都将调整并强制执行其极限的局部视图。为了估计限制，我们借用了常用的TCP拥塞控制算法，将系统的并发限制等同于TCP拥塞窗口。</p>
+<p>Before applying the algorithm we need to set some ground rules.<br>在应用算法之前，我们需要设定一些基本规则。</p>
+<ul>
+<li>We accept that every system has an inherent concurrency limit that is determined by a hard resources, such as number of CPU cores.</li>
+<li>我们承认每个系统都有一个固有的并发限制，这是由硬资源决定的，比如CPU核的数量。</li>
+<li>We accept that this limit can change as a system auto-scales.</li>
+<li>我们承认，随着系统自动缩放，该限制可能会发生变化。</li>
+<li>For large and complex distributed systems it’s impossible to know all the hard resources.</li>
+<li>对于大型复杂的分布式系统，不可能知道所有的硬资源。</li>
+<li>We can use latency measurements to determine when queuing happens.</li>
+<li>我们可以使用延迟测量来确定何时发生排队。</li>
+<li>We can use timeouts and rejected requests to aggressively back off.</li>
+<li>我们可以利用超时和被拒绝的请求来积极回退。</li>
+</ul>
+<h1 id="Limit-algorithms"><a href="#Limit-algorithms" class="headerlink" title="Limit algorithms"></a>Limit algorithms</h1><h2 id="Vegas"><a href="#Vegas" class="headerlink" title="Vegas"></a>Vegas</h2><p>Delay based algorithm where the bottleneck queue is estimated as<br>基于延迟的算法，其中瓶颈队列估计为</p>
+<pre><code>L * (1 - minRTT/sampleRtt)</code></pre><p>At the end of each sampling window the limit is increased by 1 if the queue is less than alpha (typically a value between 2-3) or decreased by 1 if the queue is greater than beta (typically a value between 4-6 requests)<br>在每个采样窗口结束时，如果队列小于alpha（通常为2-3之间的值），则限制增加1；如果队列大于beta（通常为4-6个请求之间的值），则限制减少1</p>
+<h2 id="Gradient2"><a href="#Gradient2" class="headerlink" title="Gradient2"></a>Gradient2</h2><p>This algorithm attempts to address bias and drift when using minimum latency measurements. To do this the algorithm tracks uses the measure of divergence between two exponential averages over a long and short time time window. Using averages the algorithm can smooth out the impact of outliers for bursty traffic. Divergence duration is used as a proxy to identify a queueing trend at which point the algorithm aggresively reduces the limit.<br>该算法试图解决使用最小延迟测量时的偏差和漂移问题。为了做到这一点，算法跟踪使用了长时间和短时间窗口内两个指数平均值之间的差异度量。使用平均值，该算法可以消除异常值对突发流量的影响。发散持续时间被用作一个代理来识别排队趋势，在这一点上，算法积极地降低了限制。</p>
+<h1 id="Enforcement-Strategies"><a href="#Enforcement-Strategies" class="headerlink" title="Enforcement Strategies"></a>Enforcement Strategies</h1><h2 id="Simple"><a href="#Simple" class="headerlink" title="Simple"></a>Simple</h2><p>In the simplest use case we don’t want to differentiate between requests and so enforce a single gauge of the number of inflight requests.  Requests are rejected immediately once the gauge value equals the limit.<br>在最简单的用例中，我们不想区分不同的请求，因此只需对机上请求的数量进行一次测量。一旦仪表值等于极限值，请求将立即被拒绝。</p>
+<h2 id="Percentage"><a href="#Percentage" class="headerlink" title="Percentage"></a>Percentage</h2><p>For more complex systems it’s desirable to provide certain quality of service guarantees while still making efficient use of resources.  Here we guarantee specific types of requests get a certain percentage of the concurrency limit.  For example, a system that takes both live and batch traffic may want to give live traffic 100% of the limit during heavy load and is OK with starving batch traffic. Or, a system may want to guarantee that 50% of the limit is given to write traffic so writes are never starved.<br>对于更复杂的系统，在有效利用资源的同时，最好提供一定的服务质量保证。在这里，我们保证特定类型的请求获得一定百分比的并发限制。例如，一个同时接受实时流量和批处理流量的系统可能希望在重负载期间为实时流量提供100%的限制，并且可以处理饥饿的批处理流量。或者，系统可能希望保证50%的限制用于写入流量，这样就永远不会缺少写入。</p>
+<h1 id="Integrations"><a href="#Integrations" class="headerlink" title="Integrations"></a>Integrations</h1><h2 id="GRPC"><a href="#GRPC" class="headerlink" title="GRPC"></a>GRPC</h2><p>A concurrency limiter may be installed either on the server or client. The choice of limiter depends on your use case. For the most part it is recommended to use a dynamic delay based limiter such as the VegasLimit on the server and either a pure loss based (AIMDLimit) or combined loss and delay based limiter on the client.<br>并发限制器可以安装在服务器或客户端上。限制器的选择取决于您的用例。在大多数情况下，建议在服务器上使用基于动态延迟的限制器，如VegasLimit，在客户端使用基于纯损耗的限制器（AIMDLimit）或基于损耗和延迟的组合限制器。</p>
+<h3 id="Server-limiter"><a href="#Server-limiter" class="headerlink" title="Server limiter"></a>Server limiter</h3><p>The purpose of the server limiter is to protect the server from either increased client traffic (batch apps or retry storms) or latency spikes from a dependent service.  With the limiter installed the server can ensure that latencies remain low by rejecting excess traffic with <code>Status.UNAVAILABLE</code> errors.<br>服务器限制器的目的是保护服务器不受客户端流量增加（批处理应用或重试风暴）或从属服务延迟峰值的影响。安装了限制器后，服务器可以通过拒绝带有`状态的多余流量来确保延迟保持较低。不可用的错误。</p>
+<p>In this example a GRPC server is configured with a single adaptive limiter that is shared among batch and live traffic with live traffic guaranteed 90% of throughput and 10% guaranteed to batch.  For simplicity we just expect the client to send a “group” header identifying it as ‘live’ or ‘batch’.  Ideally this should be done using TLS certificates and a server side lookup of identity to grouping.  Any requests not identified as either live or batch may only use excess capacity.<br>在本例中，GRPC服务器配置了一个自适应限制器，该限制器在批处理和实时流量之间共享，实时流量保证90%的吞吐量，并保证10%的批处理。为了简单起见，我们只希望客户端发送一个“组”头，将其标识为“活动”或“批处理”。理想情况下，这应该使用TLS证书和服务器端的身份查找来完成。任何未确定为实时或批处理的请求只能使用多余的容量。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Create and configure a server builder</span></span><br><span class="line">ServerBuilder builder = ...;</span><br><span class="line"></span><br><span class="line">builder.addService(ServerInterceptor.intercept(service,</span><br><span class="line">    ConcurrencyLimitServerInterceptor.newBuilder(</span><br><span class="line">        <span class="keyword">new</span> GrpcServerLimiterBuilder()</span><br><span class="line">            .partitionByHeader(GROUP_HEADER)</span><br><span class="line">            .partition(<span class="string">"live"</span>, <span class="number">0.9</span>)</span><br><span class="line">            .partition(<span class="string">"batch"</span>, <span class="number">0.1</span>)</span><br><span class="line">            .limit(WindowedLimit.newBuilder()</span><br><span class="line">                    .build(Gradient2Limit.newBuilder()</span><br><span class="line">                            .build()))</span><br><span class="line">            .build();</span><br><span class="line"></span><br><span class="line">    ));</span><br></pre></td></tr></table></figure>
+
+<h3 id="Client-limiter"><a href="#Client-limiter" class="headerlink" title="Client limiter"></a>Client limiter</h3><p>There are two main use cases for client side limiters. A client side limiter can protect the client service from its dependent services by failing fast and serving a degraded experience to its client instead of having its latency go up and its resources eventually exhausted. For batch applications that call other services a client side limiter acts as a backpressure mechanism ensuring that the batch application does not put unnecessary load on dependent services.<br>客户端限制器有两个主要用例。客户端限制器可以保护客户端服务不受其依赖服务的影响，方法是快速故障并向其客户端提供降级的体验，而不是让其延迟增加，最终耗尽其资源。对于调用其他服务的批处理应用程序，客户端限制器充当背压机制，确保批处理应用程序不会对依赖的服务施加不必要的负载。</p>
+<p>In this example a GRPC client will use a blocking version of the VegasLimit to block the caller when the limit has been reached.<br>在本例中，GRPC客户端将使用VegasLimit的阻塞版本在达到限制时阻塞调用者。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Create and configure a channel builder</span></span><br><span class="line">ChannelBuilder builder = ...;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Add the concurrency limit interceptor</span></span><br><span class="line">builder.intercept(</span><br><span class="line">    <span class="keyword">new</span> ConcurrencyLimitClientInterceptor(</span><br><span class="line">        <span class="keyword">new</span> GrpcClientLimiterBuilder()</span><br><span class="line">            .blockOnLimit(<span class="keyword">true</span>)</span><br><span class="line">            .build()</span><br><span class="line">        )</span><br><span class="line">    );</span><br></pre></td></tr></table></figure>
+
+<h2 id="Servlet-Filter"><a href="#Servlet-Filter" class="headerlink" title="Servlet Filter"></a>Servlet Filter</h2><p>The purpose of the servlet filter limiter is to protect the servlet from either increased client traffic (batch apps or retry storms) or latency spikes from a dependent service.  With the limiter installed the server can ensure that latencies remain low by rejecting excess traffic with HTTP 429 Too Many Requests errors.<br>servlet筛选器限制器的目的是保护servlet不受客户端流量增加（批处理应用程序或重试风暴）或依赖服务延迟峰值的影响。安装了限制器后，服务器可以通过拒绝HTTP 429过多请求错误的多余流量来确保延迟保持较低。</p>
+<p>In this example a servlet is configured with a single adaptive limiter that is shared among batch and live traffic with live traffic guaranteed 90% of throughput and 10% guaranteed to batch.  The limiter is given a lookup function that translates the request’s Principal to one of the two groups (live vs batch).<br>在本例中，servlet配置了一个自适应限制器，该限制器在批处理和实时流量之间共享，实时流量保证90%的吞吐量，10%保证批处理。限制器有一个查找函数，可以将请求的主体转换为两个组中的一个（live vs batch）。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">Map&lt;String, String&gt; principalToGroup = ...;</span><br><span class="line">Filter filter = <span class="keyword">new</span> ConcurrencyLimitServletFilter(<span class="keyword">new</span> ServletLimiterBuilder()</span><br><span class="line">    .partitionByUserPrincipal(principal -&gt; principalToGroup.get(principal.getName())</span><br><span class="line">    .partition(<span class="string">"live"</span>, <span class="number">0.9</span>)</span><br><span class="line">    .partition(<span class="string">"batch"</span>, <span class="number">0.1</span>))</span><br><span class="line">    .build());</span><br></pre></td></tr></table></figure>
+
+<h2 id="Executor"><a href="#Executor" class="headerlink" title="Executor"></a>Executor</h2><p>The BlockingAdaptiveExecutor adapts the size of an internal thread pool to match the concurrency limit based on measured latencies of Runnable commands and will block when the limit has been reached.<br>BlockingAdaptiveExecutor根据可运行命令的测量延迟调整内部线程池的大小以匹配并发限制，并在达到限制时进行阻塞。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">drainQueue</span><span class="params">(Queue&lt;Runnable&gt; tasks)</span> </span>&#123;</span><br><span class="line">    Executor executor = <span class="keyword">new</span> BlockingAdaptiveExecutor(</span><br><span class="line">        SimpleLimiter.newBuilder()</span><br><span class="line">            .build());</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">while</span> (<span class="keyword">true</span>) &#123;</span><br><span class="line">        executor.execute(tasks.take());</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+  </section>
+  <footer class="post-footer">
+    <!--
+    <section class="author">
+      <h4>Skyfire Lee</h4>
+      <p></p>
+    </section>
+    -->
+  </footer>
+</article>
+
+<nav class="pagination" role="pagination">
+    
+    <span class="page-number">•</span>
+    
+    <a class="older-posts" href="/2022/04/28/my-vim-config/">
+        <!--VIM配置分享--> next →
+    </a>
+    
+</nav>
+
+
+        </main>
+        <footer id="footer">
+            <section id="footer-message">&copy; 2022 Skyfire Lee. All rights reserved. Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>. <a href="https://github.com/guolin/crisp-hexo-theme" target="_blank">crisp</a> theme by <a href="guolin.github.io" target="_blank">Guo Lin</a>.</section>
+        </footer>
+    </body>
+</html>
+
+
