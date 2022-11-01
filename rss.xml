@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+    <channel>
+        <title></title>
+        <link>undefined</link>
+        <description>undefined</description>
+        <lastBuildDate>Tue, 01 Nov 2022 11:33:56 GMT</lastBuildDate>
+        <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
+        <generator>Joplin Pages Publisher</generator>
+        <item>
+            <title><![CDATA[RedisBloom 详解]]></title>
+            <guid>693bab77bf8d4b779fe814501119e8d4</guid>
+            <pubDate>Tue, 01 Nov 2022 02:59:43 GMT</pubDate>
+            <content:encoded><![CDATA[<h2 id="前言">前言</h2>
+<h2 id="相关命令">相关命令</h2>
+<h4 id="bfadd">BF.ADD</h4>
+<p>Syntax</p>
+<div><pre class="hljs"><code>BF.<span class="hljs-built_in">ADD</span> key item</code></pre></div>
+<p>Available in: Redis Stack / Bloom 1.0.0<br />
+Time complexity: O(k), where k is the number of hash functions used by the last sub-filter</p>
+<h4 id="bfexists">BF.EXISTS</h4>
+<p>Syntax</p>
+<div><pre class="hljs"><code>BF.EXISTS<span class="hljs-built_in"> key</span> <span class="hljs-type">item</span></code></pre></div>
+<p>Available in: Redis Stack / Bloom 1.0.0<br />
+Time complexity: O(k), where k is the number of hash functions used by the last sub-filter</p>
+<h4 id="bfinfo">BF.INFO</h4>
+<p>Syntax</p>
+<div><pre class="hljs"><code>BF.INFO key [CAPACITY | <span class="hljs-type">SIZE</span> | <span class="hljs-type">FILTERS</span> | <span class="hljs-type">ITEMS</span> | <span class="hljs-type">EXPANSION</span>]</code></pre></div>
+<p>Available in: Redis Stack / Bloom 1.0.0<br />
+Time complexity: O(1)</p>
+<h4 id="bfinsert">BF.INSERT</h4>
+<p>Syntax</p>
+<div><pre class="hljs"><code>BF.INSERT key <span class="hljs-comment">[CAPACITY capacity]</span> <span class="hljs-comment">[ERROR error]</span>
+  <span class="hljs-comment">[EXPANSION expansion]</span> <span class="hljs-comment">[NOCREATE]</span> <span class="hljs-comment">[NONSCALING]</span> ITEMS item <span class="hljs-comment">[item
+  ...]</span></code></pre></div>
+<p>Available in: Redis Stack / Bloom 1.0.0<br />
+Time complexity: O(k * n), where k is the number of hash functions and n is the number of items</p>
+<h4 id="bfloadchunk">BF.LOADCHUNK</h4>
+<p>Syntax</p>
+<div><pre class="hljs"><code><span class="hljs-type">BF</span>.<span class="hljs-type">LOADCHUNK</span> key iterator <span class="hljs-class"><span class="hljs-keyword">data</span></span></code></pre></div>
+<p>Available in:</p>
+<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
+<p>Time complexity:</p>
+<p>O(n), where n is the capacity</p>
+<h4 id="bfmadd">BF.MADD</h4>
+<p>Syntax</p>
+<div><pre class="hljs"><code>BF.MADD<span class="hljs-built_in"> key</span> <span class="hljs-type">item</span> [<span class="hljs-type">item</span> ...]</code></pre></div>
+<p>Available in:</p>
+<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
+<p>Time complexity:</p>
+<p>O(k * n), where k is the number of hash functions and n is the number of items</p>
+<h4 id="bfmadd-2">BF.MADD</h4>
+<p>Syntax</p>
+<div><pre class="hljs"><code>BF.MADD<span class="hljs-built_in"> key</span> <span class="hljs-type">item</span> [<span class="hljs-type">item</span> ...]</code></pre></div>
+<p>Available in:</p>
+<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
+<p>Time complexity:</p>
+<p>O(k * n), where k is the number of hash functions and n is the number of items</p>
+<h4 id="bfmexists">BF.MEXISTS</h4>
+<p>Syntax</p>
+<div><pre class="hljs"><code>BF.MEXISTS<span class="hljs-built_in"> key</span> <span class="hljs-type">item</span> [<span class="hljs-type">item</span> ...]</code></pre></div>
+<p>Available in:</p>
+<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
+<p>Time complexity:</p>
+<p>O(k * n), where k is the number of hash functions and n is the number of items</p>
+<h4 id="bfreserve">BF.RESERVE</h4>
+<p>Syntax</p>
+<div><pre class="hljs"><code>BF<span class="hljs-selector-class">.RESERVE</span> key error_rate capacity <span class="hljs-selector-attr">[EXPANSION expansion]</span>
+  <span class="hljs-selector-attr">[NONSCALING]</span></code></pre></div>
+<p>Available in:</p>
+<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
+<p>Time complexity:</p>
+<p>O(1)</p>
+<h4 id="bfscandump">BF.SCANDUMP</h4>
+<p>Syntax</p>
+<div><pre class="hljs"><code>BF.SCANDUMP <span class="hljs-keyword">key</span> <span class="hljs-keyword">iterator</span></code></pre></div>
+<p>Available in:</p>
+<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
+<p>Time complexity:</p>
+<p>O(n), where n is the capacity</p>
+]]></content:encoded>
+        </item>
+    </channel>
+</rss>
