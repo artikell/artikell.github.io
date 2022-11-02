@@ -6,7 +6,7 @@
 <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 <link rel="stylesheet" href="/_assets/main.css" />
 
-    <title>RedisBloom 详解 - Artikell‘s home</title>
+    <title>RedisBloom 布隆过滤器详解(50%) - Artikell‘s home</title>
   <link rel="stylesheet" href="/_markdown_plugin_assets/highlight.js/atom-one-light.css" /></head>
   <body>
     <div class="main">
@@ -15,7 +15,7 @@
       </nav>
       <article>
         <header>
-          <h1 class="article-title">RedisBloom 详解</h1>
+          <h1 class="article-title">RedisBloom 布隆过滤器详解(50%)</h1>
           <div class="article-info">
             <div>
               <span
@@ -24,8 +24,8 @@
                 ></span
               >
               <span
-                >Updated At：<time datetime="1667272309911"
-                  >2022-11-01 11:11</time
+                >Updated At：<time datetime="1667348904536"
+                  >2022-11-02 08:28</time
                 ></span
               >
             </div>
@@ -33,72 +33,115 @@
           </div>
         </header>
         <div class="article-content markdown-body"><h2 id="前言">前言</h2>
+<h2 id="布隆过滤器">布隆过滤器</h2>
+<p>布隆过滤器（Bloom Filter）是 1970 年由布隆提出的。它实际上是一个很长的二进制向量和一系列随机映射函数。主要用于<strong>判断一个元素是否在一个集合中</strong>。</p>
+<p>通常我们会遇到很多要判断一个元素是否在某个集合中的业务场景，一般想到的是将集合中所有元素保存起来，然后通过比较确定。<strong>链表、树、散列表</strong>（又叫哈希表，Hash table）等等数据结构都是这种思路。</p>
+<p>但是随着集合中元素的增加，我们需要的存储空间也会呈现线性增长，最终达到瓶颈。同时检索速度也越来越慢，上述三种结构的检索时间复杂度分别为O(n) O(n) O(n)，O(logn) O(logn) O(logn)，O(1) O(1) O(1)。</p>
+<h3 id="原理">原理</h3>
+<p>假设我们有个集合 A，A 中有 n 个元素。利用k个哈希散列函数，将A中的每个元素映射到一个长度为 a 位的数组 B中的不同位置上，这些位置上的二进制数均设置为 1。</p>
+<p>如果待检查的元素，经过这 k个哈希散列函数的映射后，发现其 k 个位置上的二进制数全部为 1，这个元素很可能属于集合A，反之，一定不属于集合A。</p>
+<h3 id="误判现象">误判现象</h3>
+<p>由于本身采用的是哈希散列，故很容易存在碰撞，也会出现多个元素散列到相同的位置上，这就是布隆过滤器的误判现象，所以，布隆过滤器判断存在的不一定存在，但是，判断不存在的一定不存在。</p>
+<p>其中影响整个的正确率的因素包括<strong>填充率</strong>以及<strong>散列次数</strong>。元素被散列多次，碰撞的可能性会下降，同理在填充率较低的情况下，碰撞的可能性也会减少。</p>
+<p>布隆过滤器可精确的代表一个集合，可精确判断某一元素是否在此集合中，精确程度由用户的具体设计决定，达到 100% 的正确是不可能的。</p>
+<h3 id="可扩展的布隆过滤器">可扩展的布隆过滤器</h3>
+<p>通常，创建布隆过滤器时必须预先知道它们将包含多少条目。bpe 数需要固定，同样位数组的宽度也是固定的。<br />
+与哈希表不同，布隆过滤器不能“重新平衡”，因为无法知道哪些条目是过滤器的一部分（过滤器只能确定给定条目是否存在，但实际上并不存储存在的条目）。</p>
+<p>为了让布隆过滤器能够“缩放”并能够容纳比设计更多的元素，它们可以堆叠。一旦单个布隆过滤器达到容量，就会在其上创建一个新的布隆过滤器。通常，新过滤器将具有比前一个过滤器更大的容量，以减少需要堆叠另一个过滤器的可能性。</p>
+<p>在可堆叠（可扩展）布隆过滤器中，检查成员资格现在涉及检查每个层是否存在。现在添加新项目涉及事先检查它是否存在，并将其添加到当前筛选器。但是，哈希仍然只需要计算一次。</p>
+<p>在创建布隆过滤器（即使是可扩展的过滤器）时，重要的是要清楚地了解它应该包含多少项。初始层只能包含少量元素的过滤器将显著降低性能，因为它需要更多层才能达到更大的容量。</p>
+<h3 id="redisbloom实现">RedisBloom实现</h3>
+<h3 id="应用范围">应用范围</h3>
+<p>布隆在海量数据查询中以优异的空间效率和低误判率有非常广泛的应用，其中包括但不限于：</p>
+<ol>
+<li>检查单词拼写正确性</li>
+<li>检测海量名单嫌疑人</li>
+<li>垃圾邮件过滤</li>
+<li>搜索爬虫URL去重</li>
+<li>缓存穿透过滤</li>
+</ol>
+<p>世界上著名各大科技公司使用布隆过滤器的实际案例：</p>
+<ol>
+<li>Google 著名的分布式数据库 Bigtable 使用了布隆过滤器来查找不存在的行或列，以减少磁盘查找的IO次数。</li>
+<li>Squid 网页代理缓存服务器在 cache digests 中使用了也布隆过滤器。</li>
+<li>Venti 文档存储系统也采用布隆过滤器来检测先前存储的数据。</li>
+<li>SPIN 模型检测器也使用布隆过滤器在大规模验证问题时跟踪可达状态空间。</li>
+<li>Google Chrome浏览器使用了布隆过滤器加速安全浏览服务。</li>
+</ol>
 <h2 id="相关命令">相关命令</h2>
 <h4 id="bfadd">BF.ADD</h4>
 <p>Syntax</p>
 <div><pre class="hljs"><code>BF.<span class="hljs-built_in">ADD</span> key item</code></pre></div>
-<p>Available in: Redis Stack / Bloom 1.0.0<br />
-Time complexity: O(k), where k is the number of hash functions used by the last sub-filter</p>
+<p>Time complexity:</p>
+<p>O(k), where k is the number of hash functions used by the last sub-filter</p>
 <h4 id="bfexists">BF.EXISTS</h4>
 <p>Syntax</p>
 <div><pre class="hljs"><code>BF.EXISTS<span class="hljs-built_in"> key</span> <span class="hljs-type">item</span></code></pre></div>
-<p>Available in: Redis Stack / Bloom 1.0.0<br />
-Time complexity: O(k), where k is the number of hash functions used by the last sub-filter</p>
+<p>Time complexity:</p>
+<p>O(k), where k is the number of hash functions used by the last sub-filter</p>
 <h4 id="bfinfo">BF.INFO</h4>
 <p>Syntax</p>
 <div><pre class="hljs"><code>BF.INFO key [CAPACITY | <span class="hljs-type">SIZE</span> | <span class="hljs-type">FILTERS</span> | <span class="hljs-type">ITEMS</span> | <span class="hljs-type">EXPANSION</span>]</code></pre></div>
-<p>Available in: Redis Stack / Bloom 1.0.0<br />
-Time complexity: O(1)</p>
+<p>Time complexity:</p>
+<p>O(1)</p>
 <h4 id="bfinsert">BF.INSERT</h4>
 <p>Syntax</p>
 <div><pre class="hljs"><code>BF.INSERT key <span class="hljs-comment">[CAPACITY capacity]</span> <span class="hljs-comment">[ERROR error]</span>
   <span class="hljs-comment">[EXPANSION expansion]</span> <span class="hljs-comment">[NOCREATE]</span> <span class="hljs-comment">[NONSCALING]</span> ITEMS item <span class="hljs-comment">[item
   ...]</span></code></pre></div>
-<p>Available in: Redis Stack / Bloom 1.0.0<br />
-Time complexity: O(k * n), where k is the number of hash functions and n is the number of items</p>
+<p>Time complexity:</p>
+<p>O(k * n), where k is the number of hash functions and n is the number of items</p>
 <h4 id="bfloadchunk">BF.LOADCHUNK</h4>
 <p>Syntax</p>
 <div><pre class="hljs"><code><span class="hljs-type">BF</span>.<span class="hljs-type">LOADCHUNK</span> key iterator <span class="hljs-class"><span class="hljs-keyword">data</span></span></code></pre></div>
-<p>Available in:</p>
-<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
 <p>Time complexity:</p>
 <p>O(n), where n is the capacity</p>
 <h4 id="bfmadd">BF.MADD</h4>
 <p>Syntax</p>
 <div><pre class="hljs"><code>BF.MADD<span class="hljs-built_in"> key</span> <span class="hljs-type">item</span> [<span class="hljs-type">item</span> ...]</code></pre></div>
-<p>Available in:</p>
-<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
 <p>Time complexity:</p>
 <p>O(k * n), where k is the number of hash functions and n is the number of items</p>
 <h4 id="bfmadd-2">BF.MADD</h4>
 <p>Syntax</p>
 <div><pre class="hljs"><code>BF.MADD<span class="hljs-built_in"> key</span> <span class="hljs-type">item</span> [<span class="hljs-type">item</span> ...]</code></pre></div>
-<p>Available in:</p>
-<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
 <p>Time complexity:</p>
 <p>O(k * n), where k is the number of hash functions and n is the number of items</p>
 <h4 id="bfmexists">BF.MEXISTS</h4>
 <p>Syntax</p>
 <div><pre class="hljs"><code>BF.MEXISTS<span class="hljs-built_in"> key</span> <span class="hljs-type">item</span> [<span class="hljs-type">item</span> ...]</code></pre></div>
-<p>Available in:</p>
-<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
 <p>Time complexity:</p>
 <p>O(k * n), where k is the number of hash functions and n is the number of items</p>
 <h4 id="bfreserve">BF.RESERVE</h4>
 <p>Syntax</p>
 <div><pre class="hljs"><code>BF<span class="hljs-selector-class">.RESERVE</span> key error_rate capacity <span class="hljs-selector-attr">[EXPANSION expansion]</span>
   <span class="hljs-selector-attr">[NONSCALING]</span></code></pre></div>
-<p>Available in:</p>
-<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
 <p>Time complexity:</p>
 <p>O(1)</p>
 <h4 id="bfscandump">BF.SCANDUMP</h4>
 <p>Syntax</p>
 <div><pre class="hljs"><code>BF.SCANDUMP <span class="hljs-keyword">key</span> <span class="hljs-keyword">iterator</span></code></pre></div>
-<p>Available in:</p>
-<p><a title="https://redis.io/docs/stack" href="https://redis.io/docs/stack">Redis Stack</a>  /  <a title="https://redis.io/docs/stack/bloom" href="https://redis.io/docs/stack/bloom">Bloom 1.0.0</a></p>
 <p>Time complexity:</p>
 <p>O(n), where n is the capacity</p>
+<h2 id="最佳实践">最佳实践</h2>
+<p>布隆过滤器的工作原理是通过快速哈希函数运行项目并从该哈希中采样位，并在位字段中以特定间隔将它们从 0 设置为 1。为了检查布隆过滤器中是否存在，需要对相同的位进行采样。许多项目可能有重叠的位，但由于哈希函数产生唯一标识符，如果哈希中的单个位仍然是 0，那么我们知道它之前没有添加过。</p>
+<p>布隆过滤器多年来一直通过客户端库与 Redis 一起使用，这些库利用 GETBIT 和 SETBIT 来处理键的位域。值得庆幸的是，从 Redis 4.0 开始，ReBloom 模块已经可用，它消除了任何 Bloom 过滤器实现开销。</p>
+<p>布隆过滤器的一个很好的用例是检查已使用的用户名。在小范围内，这没有问题，但随着服务的增长，这可能会对数据库造成很大的负担。使用 ReBloom 实现这一点非常简单。</p>
+<p>首先，让我们添加一些用户名作为测试：</p>
+<div><pre class="hljs"><code><span class="hljs-meta">&gt;</span> <span class="language-javascript"><span class="hljs-variable constant_">BF</span>.<span class="hljs-property">ADD</span> usernames funnyfred</span>
+(integer) 1
+<span class="hljs-meta">&gt;</span> <span class="language-javascript"><span class="hljs-variable constant_">BF</span>.<span class="hljs-property">ADD</span> usernames fredisfunny</span>
+(integer) 1
+<span class="hljs-meta">&gt;</span> <span class="language-javascript"><span class="hljs-variable constant_">BF</span>.<span class="hljs-property">ADD</span> usernames fred</span>
+(integer) 1
+<span class="hljs-meta">&gt;</span> <span class="language-javascript"><span class="hljs-variable constant_">BF</span>.<span class="hljs-property">ADD</span> usernames funfred</span>
+(integer) 1</code></pre></div>
+<p>现在，让我们针对布隆过滤器运行一些测试。</p>
+<div><pre class="hljs"><code><span class="hljs-meta">&gt;</span> <span class="language-javascript"><span class="hljs-variable constant_">BF</span>.<span class="hljs-property">EXISTS</span> usernames fred</span>
+(integer) 1
+<span class="hljs-meta">&gt;</span> <span class="language-javascript"><span class="hljs-variable constant_">BF</span>.<span class="hljs-property">EXISTS</span> usernames fred_is_funny</span>
+(integer) 0</code></pre></div>
+<p>正如预期的那样，fred_is_funny产生 0。响应为零表示我们可以确定此用户名未被使用。响应为 1 表示它可能已被使用。我们不能肯定地说，因为这可能是多个项目之间重叠位的情况。</p>
+<p>通常，误报的几率很低，但非零。随着布隆过滤器“填满”，机会增加。您可以使用BF调整错误率和大小。保留命令。</p>
 </div>
       </article>
     </div>
