@@ -1,0 +1,38 @@
+---
+title: About
+date: 2023-01-01 16:05:44
+---
+
+<% let Life = {
+    name: "Skyfire",
+    update_time: Date(),
+    plans: [
+        {
+            title: "Book",
+            progress: 0,
+            total: 30
+        },
+        {
+            title: "Article",
+            progress: 0,
+            total: 50
+        },
+        {
+            title: "Travel",
+            progress: 0,
+            total: 5
+        }
+    ],
+}; 
+%>
+
+<h2>Introduction</h2>
+
+<p> <b>Name</b>: <%= Life.name %> </p>
+<p> <b>LastTime</b>: <%= Life.update_time %> </p>
+
+<h2>Plan</h2>
+
+<% Life.plans.forEach(function(plan){ %>
+    <p> <b><%= plan.title %></b>: <%= plan.progress %> / <%= plan.total %> </p>
+<% }); %>
