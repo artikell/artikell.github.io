@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
+    <loc>https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/</loc>
+    <lastmod>2023-01-02</lastmod>
+  </url>
+  <url>
     <loc>https://artikell.github.io/2023/01/02/hello-world/</loc>
     <lastmod>2023-01-01</lastmod>
   </url>
