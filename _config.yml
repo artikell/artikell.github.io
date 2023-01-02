@@ -110,8 +110,10 @@ deploy:
 theme_config:
   nav:
     home: /
-    about: /about/
     articles: /archives/
+    about: /about/
+    Link: /link/
+    Roadmap: /roadmap/
     projects: http://github.com/artikell
   social_links:
     github: http://github.com/artikell
