@@ -1,0 +1,3 @@
+[submodule "cactus"]      # 子模块的名称
+path = themes/cactus# 子模块在本仓库中文件的存储路径
+url = https://github.com/probberechts/hexo-theme-cactus.git # 子模块的远程仓库地址
