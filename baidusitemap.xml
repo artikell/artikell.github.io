@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
+    <loc>https://artikell.github.io/2023/01/10/Redis%E4%B8%AD%E7%9A%84Timeout%E5%A4%84%E7%90%86/</loc>
+    <lastmod>2023-01-10</lastmod>
+  </url>
+  <url>
     <loc>https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/</loc>
     <lastmod>2023-01-09</lastmod>
   </url>
