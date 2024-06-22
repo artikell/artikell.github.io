@@ -14,7 +14,7 @@
 <meta property="og:description" content="0. 前言在hexo使用上，将deploy和生成功能分开，同时需要2个命令来控制是一个很好的设计。但是，对于我这么懒惰的人，我当然是希望将这个流程自动化了。然后，其中遇到了几个问题：  hexo环境自动化部署 hexo提交自动化  Setup.sh环境自动化，一般都是通过一个统一的脚步来实现即可。那么，就可以实现一个setup.sh脚本来初始化，例如： 1234567#!&#x2F;bin&#x2F;bashecho">
 <meta property="og:locale">
 <meta property="article:published_time" content="2024-06-22T12:50:34.000Z">
-<meta property="article:modified_time" content="2024-06-22T12:57:23.201Z">
+<meta property="article:modified_time" content="2024-06-22T12:59:14.706Z">
 <meta property="article:author" content="artikell">
 <meta name="twitter:card" content="summary">
     
@@ -162,7 +162,7 @@
 <li><code>chmod</code>: 提供可执行能力</li>
 </ul>
 <h1 id="Hooks"><a href="#Hooks" class="headerlink" title="Hooks"></a>Hooks</h1><p>hooks只能在本地使用，然后，我希望能在push的时候，能自动化的完成部署，那么，只需要支持<code>pre-push</code>脚本来实现即可。</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">#!/bin/sh</span><br><span class="line">hexo d</span><br></pre></td></tr></table></figure>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">#!/bin/sh</span><br><span class="line">hexo g</span><br><span class="line">hexo d</span><br></pre></td></tr></table></figure>
 
 <h1 id="Result"><a href="#Result" class="headerlink" title="Result"></a>Result</h1><p>这样， 我就不用再纠结hexo的环境了。我只需要拉取仓库，并执行<code>bash setup.sh</code>，再继续编写我的文档即可。</p>
 
