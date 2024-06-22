@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang=cn>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="在新的Redis中，由于存在一些Lua、Function、Module等插件类功能，其中需要依赖基础的call方法来调用原生方法，此时就需要对实际命令调用后结果进行解析。这也引入了对协议解析的抽象层。 关于协议新的Resp3协议引入了很多概念，包括了Map、BigNumber、Set等，为了更好的了解协议情况，直接贴出解析入口方法： 12345678910111213141516171819202">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis新协议-RESP3">
+<meta property="og:url" content="https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/index.html">
+<meta property="og:site_name" content="Artikell&#39;s Blog">
+<meta property="og:description" content="在新的Redis中，由于存在一些Lua、Function、Module等插件类功能，其中需要依赖基础的call方法来调用原生方法，此时就需要对实际命令调用后结果进行解析。这也引入了对协议解析的抽象层。 关于协议新的Resp3协议引入了很多概念，包括了Map、BigNumber、Set等，为了更好的了解协议情况，直接贴出解析入口方法： 12345678910111213141516171819202">
+<meta property="og:locale">
+<meta property="article:published_time" content="2023-01-08T15:44:38.000Z">
+<meta property="article:modified_time" content="2024-06-22T11:28:54.776Z">
+<meta property="article:author" content="artikell">
+<meta name="twitter:card" content="summary">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>Redis新协议-RESP3</title>
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- persian styles -->
+    
+    <!-- rss -->
+    
+    
+	<!-- mathjax -->
+	
+<meta name="generator" content="Hexo 5.4.2"></head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  <a id="menu-icon" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="menu-icon-tablet" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="top-icon-tablet" href="#" aria-label="Top" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');" style="display:none;"><i class="fas fa-chevron-up fa-lg"></i></a>
+  <span id="menu">
+    <span id="nav">
+      <ul>
+        <!--
+       --><li><a href="/">Home</a></li><!--
+     --><!--
+       --><li><a href="/archives/">Writing</a></li><!--
+     --><!--
+       --><li><a href="/about/">About</a></li><!--
+     --><!--
+       --><li><a href="/link/">Link</a></li><!--
+     --><!--
+       --><li><a href="/roadmap/">Roadmap</a></li><!--
+     --><!--
+       --><li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li><!--
+     -->
+      </ul>
+    </span>
+    <br/>
+    <span id="actions">
+      <ul>
+        
+        <li><a class="icon" aria-label="Previous post" href="/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/"><i class="fas fa-chevron-left" aria-hidden="true" onmouseover="$('#i-prev').toggle();" onmouseout="$('#i-prev').toggle();"></i></a></li>
+        
+        
+        <li><a class="icon" aria-label="Next post" href="/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/"><i class="fas fa-chevron-right" aria-hidden="true" onmouseover="$('#i-next').toggle();" onmouseout="$('#i-next').toggle();"></i></a></li>
+        
+        <li><a class="icon" aria-label="Back to top" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up" aria-hidden="true" onmouseover="$('#i-top').toggle();" onmouseout="$('#i-top').toggle();"></i></a></li>
+        <li><a class="icon" aria-label="Share post" href="#"><i class="fas fa-share-alt" aria-hidden="true" onmouseover="$('#i-share').toggle();" onmouseout="$('#i-share').toggle();" onclick="$('#share').toggle();return false;"></i></a></li>
+      </ul>
+      <span id="i-prev" class="info" style="display:none;">Previous post</span>
+      <span id="i-next" class="info" style="display:none;">Next post</span>
+      <span id="i-top" class="info" style="display:none;">Back to top</span>
+      <span id="i-share" class="info" style="display:none;">Share post</span>
+    </span>
+    <br/>
+    <div id="share" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/"><i class="fab fa-facebook " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&text=Redis新协议-RESP3"><i class="fab fa-twitter " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&title=Redis新协议-RESP3"><i class="fab fa-linkedin " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&is_video=false&description=Redis新协议-RESP3"><i class="fab fa-pinterest " aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=Redis新协议-RESP3&body=Check out this article: https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/"><i class="fas fa-envelope " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&title=Redis新协议-RESP3"><i class="fab fa-get-pocket " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&title=Redis新协议-RESP3"><i class="fab fa-reddit " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&title=Redis新协议-RESP3"><i class="fab fa-stumbleupon " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&title=Redis新协议-RESP3"><i class="fab fa-digg " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&name=Redis新协议-RESP3&description="><i class="fab fa-tumblr " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&t=Redis新协议-RESP3"><i class="fab fa-hacker-news " aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+    <div id="toc">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E4%BA%8E%E5%8D%8F%E8%AE%AE"><span class="toc-number">1.</span> <span class="toc-text">关于协议</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8D%8F%E8%AE%AE%E5%86%85%E5%AE%B9"><span class="toc-number">2.</span> <span class="toc-text">协议内容</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#parseNull-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.1.</span> <span class="toc-text">parseNull 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseBulk-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.2.</span> <span class="toc-text">parseBulk 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseError-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.3.</span> <span class="toc-text">parseError 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseSimpleString-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.4.</span> <span class="toc-text">parseSimpleString 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseLong-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.5.</span> <span class="toc-text">parseLong 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseArray-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.6.</span> <span class="toc-text">parseArray 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseSet-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.7.</span> <span class="toc-text">parseSet 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseMap-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.8.</span> <span class="toc-text">parseMap 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseDouble-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.9.</span> <span class="toc-text">parseDouble 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseBool-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.10.</span> <span class="toc-text">parseBool 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseBigNumber-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.11.</span> <span class="toc-text">parseBigNumber 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseAttributes-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.12.</span> <span class="toc-text">parseAttributes 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseVerbatimString-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.13.</span> <span class="toc-text">parseVerbatimString 解析</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%89%B9%E6%AE%8A%E6%BA%90%E7%A0%81"><span class="toc-number">3.</span> <span class="toc-text">特殊源码</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8D%8F%E8%AE%AE%E7%BB%93%E6%9E%84"><span class="toc-number">3.1.</span> <span class="toc-text">协议结构</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%8D%8F%E8%AE%AE%E4%BF%A1%E6%81%AF"><span class="toc-number">3.1.1.</span> <span class="toc-text">协议信息</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E9%83%A8%E5%88%86"><span class="toc-number">3.1.2.</span> <span class="toc-text">数据部分</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9E%90%E6%9E%84%E5%A4%84%E7%90%86"><span class="toc-number">3.2.</span> <span class="toc-text">析构处理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%80%92%E5%BD%92%E9%80%BB%E8%BE%91"><span class="toc-number">3.3.</span> <span class="toc-text">递归逻辑</span></a></li></ol></li></ol>
+    </div>
+  </span>
+</div>
+
+    
+    <div class="content index py4">
+        
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 class="posttitle" itemprop="name headline">
+        Redis新协议-RESP3
+    </h1>
+
+
+
+    <div class="meta">
+      <span class="author" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span itemprop="name">artikell</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2023-01-08T15:44:38.000Z" itemprop="datePublished">2023-01-08</time>
+        
+      
+    </div>
+
+
+      
+
+      
+
+    </div>
+  </header>
+  
+
+  <div class="content" itemprop="articleBody">
+    <p>在新的Redis中，由于存在一些Lua、Function、Module等插件类功能，其中需要依赖基础的call方法来调用原生方法，此时就需要对实际命令调用后结果进行解析。这也引入了对协议解析的抽象层。</p>
+<h2 id="关于协议"><a href="#关于协议" class="headerlink" title="关于协议"></a>关于协议</h2><p>新的Resp3协议引入了很多概念，包括了Map、BigNumber、Set等，为了更好的了解协议情况，直接贴出解析入口方法：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">/* Parse a reply pointed to by parser-&gt;curr_location. */</span><br><span class="line">int parseReply(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    switch (parser-&gt;curr_location[0]) &#123;</span><br><span class="line">        case &#x27;$&#x27;: return parseBulk(parser, p_ctx);</span><br><span class="line">        case &#x27;+&#x27;: return parseSimpleString(parser, p_ctx);</span><br><span class="line">        case &#x27;-&#x27;: return parseError(parser, p_ctx);</span><br><span class="line">        case &#x27;:&#x27;: return parseLong(parser, p_ctx);</span><br><span class="line">        case &#x27;*&#x27;: return parseArray(parser, p_ctx);</span><br><span class="line">        case &#x27;~&#x27;: return parseSet(parser, p_ctx);</span><br><span class="line">        case &#x27;%&#x27;: return parseMap(parser, p_ctx);</span><br><span class="line">        case &#x27;#&#x27;: return parseBool(parser, p_ctx);</span><br><span class="line">        case &#x27;,&#x27;: return parseDouble(parser, p_ctx);</span><br><span class="line">        case &#x27;_&#x27;: return parseNull(parser, p_ctx);</span><br><span class="line">        case &#x27;(&#x27;: return parseBigNumber(parser, p_ctx);</span><br><span class="line">        case &#x27;=&#x27;: return parseVerbatimString(parser, p_ctx);</span><br><span class="line">        case &#x27;|&#x27;: return parseAttributes(parser, p_ctx);</span><br><span class="line">        default: if (parser-&gt;callbacks.error) parser-&gt;callbacks.error(p_ctx);</span><br><span class="line">    &#125;</span><br><span class="line">    return C_ERR;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>由此可见，此处有13个协议标记，单独予以归类：</p>
+<ul>
+<li>简单类型：<code>+</code>、<code>-</code>、<code>:</code>、<code>#</code>、<code>,</code>、<code>(</code>、<code>=</code>、<code>_</code></li>
+<li>复杂类型：<code>$</code>、<code>*</code>、<code>~</code>、<code>%</code>、<code>|</code></li>
+</ul>
+<p>为了统一进行解析，此处对协议解析进行了抽象：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">static const ReplyParserCallbacks DefaultParserCallbacks = &#123;</span><br><span class="line">    .null_callback = callReplyNull,</span><br><span class="line">    .bulk_string_callback = callReplyBulkString,</span><br><span class="line">    .null_bulk_string_callback = callReplyNullBulkString,</span><br><span class="line">    .null_array_callback = callReplyNullArray,</span><br><span class="line">    .error_callback = callReplyError,</span><br><span class="line">    .simple_str_callback = callReplySimpleStr,</span><br><span class="line">    .long_callback = callReplyLong,</span><br><span class="line">    .array_callback = callReplyArray,</span><br><span class="line">    .set_callback = callReplySet,</span><br><span class="line">    .map_callback = callReplyMap,</span><br><span class="line">    .double_callback = callReplyDouble,</span><br><span class="line">    .bool_callback = callReplyBool,</span><br><span class="line">    .big_number_callback = callReplyBigNumber,</span><br><span class="line">    .verbatim_string_callback = callReplyVerbatimString,</span><br><span class="line">    .attribute_callback = callReplyAttribute,</span><br><span class="line">    .error = callReplyParseError,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>实际的场景主要在于Module需要解析协议进行处理，以及Lua需要将协议转换为lua数据并执行。<br>从最初的代码中，可以看到解析主要依赖俩块数据：<code>parser</code>、<code>ctx</code>，前者代码解析时回调，而后者主要是解析时传入的上下文信息。</p>
+<h2 id="协议内容"><a href="#协议内容" class="headerlink" title="协议内容"></a>协议内容</h2><p>此处，针对不同类型的默认解析器进行讲解，方便后续理解</p>
+<h3 id="parseNull-解析"><a href="#parseNull-解析" class="headerlink" title="parseNull 解析"></a>parseNull 解析</h3><p>协议为 <code>_</code> 数据，解析直接赋值相关类型以及长度，占用空间为3字节。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">static int parseNull(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    parser-&gt;curr_location = p + 2; /* for \r\n */</span><br><span class="line">    parser-&gt;callbacks.null_callback(p_ctx, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void callReplyNull(void *ctx, const char *proto, size_t proto_len) &#123;</span><br><span class="line">    CallReply *rep = ctx;</span><br><span class="line">    callReplySetSharedData(rep, REDISMODULE_REPLY_NULL, proto, proto_len, REPLY_FLAG_RESP3);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="parseBulk-解析"><a href="#parseBulk-解析" class="headerlink" title="parseBulk 解析"></a>parseBulk 解析</h3><p>协议为 <code>$</code> 开头的数据，并解析出 2字节的长度信息以及实际的内容，如果长度为-1，则认为是空数据。与Null相同意思。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">static int parseBulk(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    long long bulklen;</span><br><span class="line">    parser-&gt;curr_location = p + 2; /* for \r\n */</span><br><span class="line"></span><br><span class="line">    string2ll(proto+1,p-proto-1,&amp;bulklen);</span><br><span class="line">    if (bulklen == -1) &#123;</span><br><span class="line">        parser-&gt;callbacks.null_bulk_string_callback(p_ctx, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        const char *str = parser-&gt;curr_location;</span><br><span class="line">        parser-&gt;curr_location += bulklen;</span><br><span class="line">        parser-&gt;curr_location += 2; /* for \r\n */</span><br><span class="line">        parser-&gt;callbacks.bulk_string_callback(p_ctx, str, bulklen, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="parseError-解析"><a href="#parseError-解析" class="headerlink" title="parseError 解析"></a>parseError 解析</h3><p>协议为 <code>-</code> 开头的数据，并解析出实际的内容，并直接设置具体内容。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">static int parseError(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    parser-&gt;curr_location = p + 2; // for \r\n</span><br><span class="line">    parser-&gt;callbacks.error_callback(p_ctx, proto+1, p-proto-1, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="parseSimpleString-解析"><a href="#parseSimpleString-解析" class="headerlink" title="parseSimpleString 解析"></a>parseSimpleString 解析</h3><p>协议为 <code>-</code> 开头的数据，并解析出实际的内容，并直接设置具体内容。与Error一样的操作。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">static int parseSimpleString(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    parser-&gt;curr_location = p + 2; /* for \r\n */</span><br><span class="line">    parser-&gt;callbacks.simple_str_callback(p_ctx, proto+1, p-proto-1, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="parseLong-解析"><a href="#parseLong-解析" class="headerlink" title="parseLong 解析"></a>parseLong 解析</h3><p>协议为 <code>:</code> 开头的数据，并解析出 2字节的数据信息。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">static int parseLong(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    parser-&gt;curr_location = p + 2; /* for \r\n */</span><br><span class="line">    long long val;</span><br><span class="line">    string2ll(proto+1,p-proto-1,&amp;val);</span><br><span class="line">    parser-&gt;callbacks.long_callback(p_ctx, val, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void callReplyLong(void *ctx, long long val, const char *proto, size_t proto_len) &#123;</span><br><span class="line">    CallReply *rep = ctx;</span><br><span class="line">    callReplySetSharedData(rep, REDISMODULE_REPLY_INTEGER, proto, proto_len, 0);</span><br><span class="line">    rep-&gt;val.ll = val;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h3 id="parseArray-解析"><a href="#parseArray-解析" class="headerlink" title="parseArray 解析"></a>parseArray 解析</h3><p>协议为 <code>$</code> 开头的数据，并解析出 2字节的元素个数信息，并最终调用<code>callReplyParseCollection</code> 进行递归解析协议内容。后续会单独讲解解析后的数据如何存放。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">static int parseArray(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    long long len;</span><br><span class="line">    string2ll(proto+1,p-proto-1,&amp;len);</span><br><span class="line">    p += 2;</span><br><span class="line">    parser-&gt;curr_location = p;</span><br><span class="line">    if (len == -1) &#123;</span><br><span class="line">        parser-&gt;callbacks.null_array_callback(p_ctx, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        parser-&gt;callbacks.array_callback(parser, p_ctx, len, proto);</span><br><span class="line">    &#125;</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void callReplyArray(ReplyParser *parser, void *ctx, size_t len, const char *proto) &#123;</span><br><span class="line">    CallReply *rep = ctx;</span><br><span class="line">    rep-&gt;type = REDISMODULE_REPLY_ARRAY;</span><br><span class="line">    callReplyParseCollection(parser, rep, len, proto, 1);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="parseSet-解析"><a href="#parseSet-解析" class="headerlink" title="parseSet 解析"></a>parseSet 解析</h3><p>协议为 <code>~</code> 开头的数据，并解析出 2字节的元素个数信息，并最终调用<code>callReplyParseCollection</code> 进行递归解析协议内容。由此可见，Set和Array内容基本上相似。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">static int parseSet(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    long long len;</span><br><span class="line">    string2ll(proto+1,p-proto-1,&amp;len);</span><br><span class="line">    p += 2;</span><br><span class="line">    parser-&gt;curr_location = p;</span><br><span class="line">    parser-&gt;callbacks.set_callback(parser, p_ctx, len, proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void callReplySet(ReplyParser *parser, void *ctx, size_t len, const char *proto) &#123;</span><br><span class="line">    CallReply *rep = ctx;</span><br><span class="line">    rep-&gt;type = REDISMODULE_REPLY_SET;</span><br><span class="line">    callReplyParseCollection(parser, rep, len, proto, 1);</span><br><span class="line">    rep-&gt;flags |= REPLY_FLAG_RESP3;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="parseMap-解析"><a href="#parseMap-解析" class="headerlink" title="parseMap 解析"></a>parseMap 解析</h3><p>协议为 <code>%</code> 开头的数据，并解析出 2字节的元素个数信息，并最终调用<code>callReplyParseCollection</code> 进行递归解析协议内容。由此可见，Set、Array、Map内容基本上相似。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">static int parseMap(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    long long len;</span><br><span class="line">    string2ll(proto+1,p-proto-1,&amp;len);</span><br><span class="line">    p += 2;</span><br><span class="line">    parser-&gt;curr_location = p;</span><br><span class="line">    parser-&gt;callbacks.map_callback(parser, p_ctx, len, proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void callReplyMap(ReplyParser *parser, void *ctx, size_t len, const char *proto) &#123;</span><br><span class="line">    CallReply *rep = ctx;</span><br><span class="line">    rep-&gt;type = REDISMODULE_REPLY_MAP;</span><br><span class="line">    callReplyParseCollection(parser, rep, len, proto, 2);</span><br><span class="line">    rep-&gt;flags |= REPLY_FLAG_RESP3;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+<h3 id="parseDouble-解析"><a href="#parseDouble-解析" class="headerlink" title="parseDouble 解析"></a>parseDouble 解析</h3><p>协议为 <code>,</code> 开头的数据，并解析出全量数据，并以此复制到buffer中，并进行转换，其中最大的空间为：<code>5*1024</code>。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">static int parseDouble(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    parser-&gt;curr_location = p + 2; /* for \r\n */</span><br><span class="line">    char buf[MAX_LONG_DOUBLE_CHARS+1];</span><br><span class="line">    size_t len = p-proto-1;</span><br><span class="line">    double d;</span><br><span class="line">    if (len &lt;= MAX_LONG_DOUBLE_CHARS) &#123;</span><br><span class="line">        memcpy(buf,proto+1,len);</span><br><span class="line">        buf[len] = &#x27;\0&#x27;;</span><br><span class="line">        d = strtod(buf,NULL); /* We expect a valid representation. */</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        d = 0;</span><br><span class="line">    &#125;</span><br><span class="line">    parser-&gt;callbacks.double_callback(p_ctx, d, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+<h3 id="parseBool-解析"><a href="#parseBool-解析" class="headerlink" title="parseBool 解析"></a>parseBool 解析</h3><p>协议为 <code>#</code> 开头的数据，并解析一个字节：<code>t</code> 或者 <code>f</code>，来区分bool的数值。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">static int parseBool(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    parser-&gt;curr_location = p + 2; /* for \r\n */</span><br><span class="line">    parser-&gt;callbacks.bool_callback(p_ctx, proto[1] == &#x27;t&#x27;, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void callReplyBool(void *ctx, int val, const char *proto, size_t proto_len) &#123;</span><br><span class="line">    CallReply *rep = ctx;</span><br><span class="line">    callReplySetSharedData(rep, REDISMODULE_REPLY_BOOL, proto, proto_len, REPLY_FLAG_RESP3);</span><br><span class="line">    rep-&gt;val.ll = val;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="parseBigNumber-解析"><a href="#parseBigNumber-解析" class="headerlink" title="parseBigNumber 解析"></a>parseBigNumber 解析</h3><p>协议为 <code>(</code> 开头的数据，并解析出全量数据，并以此复制到buffer中，最终的表现形式还是为字符串。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">static int parseBigNumber(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    parser-&gt;curr_location = p + 2; /* for \r\n */</span><br><span class="line">    parser-&gt;callbacks.big_number_callback(p_ctx, proto+1, p-proto-1, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void callReplyBigNumber(void *ctx, const char *str, size_t len, const char *proto, size_t proto_len) &#123;</span><br><span class="line">    CallReply *rep = ctx;</span><br><span class="line">    callReplySetSharedData(rep, REDISMODULE_REPLY_BIG_NUMBER, proto, proto_len, REPLY_FLAG_RESP3);</span><br><span class="line">    rep-&gt;len = len;</span><br><span class="line">    rep-&gt;val.str = str;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="parseAttributes-解析"><a href="#parseAttributes-解析" class="headerlink" title="parseAttributes 解析"></a>parseAttributes 解析</h3><p>协议为 <code>|</code> 开头的数据，并解析出 2字节的元素个数信息，并最终调用<code>callReplyParseCollection</code> 进行递归解析协议内容，解析后，会再次调用 <code>parseReply</code> 单独解析内容。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line">static int parseAttributes(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    long long len;</span><br><span class="line">    string2ll(proto+1,p-proto-1,&amp;len);</span><br><span class="line">    p += 2;</span><br><span class="line">    parser-&gt;curr_location = p;</span><br><span class="line">    parser-&gt;callbacks.attribute_callback(parser, p_ctx, len, proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void callReplyAttribute(ReplyParser *parser, void *ctx, size_t len, const char *proto) &#123;</span><br><span class="line">    CallReply *rep = ctx;</span><br><span class="line">    rep-&gt;attribute = zcalloc(sizeof(CallReply));</span><br><span class="line"></span><br><span class="line">    /* Continue parsing the attribute reply */</span><br><span class="line">    rep-&gt;attribute-&gt;len = len;</span><br><span class="line">    rep-&gt;attribute-&gt;type = REDISMODULE_REPLY_ATTRIBUTE;</span><br><span class="line">    callReplyParseCollection(parser, rep-&gt;attribute, len, proto, 2);</span><br><span class="line">    rep-&gt;attribute-&gt;flags |= REPLY_FLAG_PARSED | REPLY_FLAG_RESP3;</span><br><span class="line">    rep-&gt;attribute-&gt;private_data = rep-&gt;private_data;</span><br><span class="line"></span><br><span class="line">    /* Continue parsing the reply */</span><br><span class="line">    parseReply(parser, rep);</span><br><span class="line"></span><br><span class="line">    /* In this case we need to fix the proto address and len, it should start from the attribute */</span><br><span class="line">    rep-&gt;proto = proto;</span><br><span class="line">    rep-&gt;proto_len = parser-&gt;curr_location - proto;</span><br><span class="line">    rep-&gt;flags |= REPLY_FLAG_RESP3;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h3 id="parseVerbatimString-解析"><a href="#parseVerbatimString-解析" class="headerlink" title="parseVerbatimString 解析"></a>parseVerbatimString 解析</h3><p>协议为 <code>=</code> 开头的数据，并解析出2字节的长度后，由会取出4个字节作为format信息，最终剩余的空间为二进制安全字符串。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">static int parseVerbatimString(ReplyParser *parser, void *p_ctx) &#123;</span><br><span class="line">    const char *proto = parser-&gt;curr_location;</span><br><span class="line">    char *p = strchr(proto+1,&#x27;\r&#x27;);</span><br><span class="line">    long long bulklen;</span><br><span class="line">    parser-&gt;curr_location = p + 2; /* for \r\n */</span><br><span class="line">    string2ll(proto+1,p-proto-1,&amp;bulklen);</span><br><span class="line">    const char *format = parser-&gt;curr_location;</span><br><span class="line">    parser-&gt;curr_location += bulklen;</span><br><span class="line">    parser-&gt;curr_location += 2; /* for \r\n */</span><br><span class="line">    parser-&gt;callbacks.verbatim_string_callback(p_ctx, format, format + 4, bulklen - 4, proto, parser-&gt;curr_location - proto);</span><br><span class="line">    return C_OK;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void callReplyVerbatimString(void *ctx, const char *format, const char *str, size_t len, const char *proto, size_t proto_len) &#123;</span><br><span class="line">    CallReply *rep = ctx;</span><br><span class="line">    callReplySetSharedData(rep, REDISMODULE_REPLY_VERBATIM_STRING, proto, proto_len, REPLY_FLAG_RESP3);</span><br><span class="line">    rep-&gt;len = len;</span><br><span class="line">    rep-&gt;val.verbatim_str.str = str;</span><br><span class="line">    rep-&gt;val.verbatim_str.format = format;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="特殊源码"><a href="#特殊源码" class="headerlink" title="特殊源码"></a>特殊源码</h2><h3 id="协议结构"><a href="#协议结构" class="headerlink" title="协议结构"></a>协议结构</h3><p>单独来了解一下默认协议的表示结构体：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">struct CallReply &#123;</span><br><span class="line">    void *private_data;</span><br><span class="line">    sds original_proto; /* Available only for root reply. */</span><br><span class="line">    const char *proto;</span><br><span class="line">    size_t proto_len;</span><br><span class="line">    int type;       /* REPLY_... */</span><br><span class="line">    int flags;      /* REPLY_FLAG... */</span><br><span class="line">    size_t len;     /* Length of a string, or the number elements in an array. */</span><br><span class="line">    union &#123;</span><br><span class="line">        const char *str; /* String pointer for string and error replies. This</span><br><span class="line">                          * does not need to be freed, always points inside</span><br><span class="line">                          * a reply-&gt;proto buffer of the reply object or, in</span><br><span class="line">                          * case of array elements, of parent reply objects. */</span><br><span class="line">        struct &#123;</span><br><span class="line">            const char *str;</span><br><span class="line">            const char *format;</span><br><span class="line">        &#125; verbatim_str;  /* Reply value for verbatim string */</span><br><span class="line">        long long ll;    /* Reply value for integer reply. */</span><br><span class="line">        double d;        /* Reply value for double reply. */</span><br><span class="line">        struct CallReply *array; /* Array of sub-reply elements. used for set, array, map, and attribute */</span><br><span class="line">    &#125; val;</span><br><span class="line">    list *deferred_error_list;   /* list of errors in sds form or NULL */</span><br><span class="line">    struct CallReply *attribute; /* attribute reply, NULL if not exists */</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>大体可以分为三块内容：</p>
+<ol>
+<li>协议信息</li>
+<li>数据部分</li>
+<li>析构处理</li>
+</ol>
+<h4 id="协议信息"><a href="#协议信息" class="headerlink" title="协议信息"></a>协议信息</h4><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">void *private_data;</span><br><span class="line">sds original_proto; /* Available only for root reply. */</span><br><span class="line">const char *proto;</span><br><span class="line">size_t proto_len;</span><br><span class="line">int type;       /* REPLY_... */</span><br><span class="line">int flags;      /* REPLY_FLAG... */</span><br><span class="line">size_t len;     /* Length of a string, or the number elements in an array. */</span><br></pre></td></tr></table></figure>
+
+<p>从上到下分别为：特殊透传数据、reply根地址、reply当前解析地址、reply长度、当前协议类型、当前的标记位。</p>
+<h4 id="数据部分"><a href="#数据部分" class="headerlink" title="数据部分"></a>数据部分</h4><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">size_t len;     /* Length of a string, or the number elements in an array. */</span><br><span class="line">union &#123;</span><br><span class="line">    const char *str; /* String pointer for string and error replies. This</span><br><span class="line">                      * does not need to be freed, always points inside</span><br><span class="line">                      * a reply-&gt;proto buffer of the reply object or, in</span><br><span class="line">                      * case of array elements, of parent reply objects. */</span><br><span class="line">    struct &#123;</span><br><span class="line">        const char *str;</span><br><span class="line">        const char *format;</span><br><span class="line">    &#125; verbatim_str;  /* Reply value for verbatim string */</span><br><span class="line">    long long ll;    /* Reply value for integer reply. */</span><br><span class="line">    double d;        /* Reply value for double reply. */</span><br><span class="line">    struct CallReply *array; /* Array of sub-reply elements. used for set, array, map, and attribute */</span><br><span class="line">&#125; val;</span><br><span class="line">struct CallReply *attribute; /* attribute reply, NULL if not exists */</span><br></pre></td></tr></table></figure>
+
+<p>整体通过一个union属性来包裹了value信息，其中有string、verbatim_str、number、double、array类型，同时这部分还有一个len代表元素的长度信息。</p>
+<p>其中，我们将 <code>attribute</code> 也做为数据部分看待，因为，它也可以表示实际的信息。</p>
+<h3 id="析构处理"><a href="#析构处理" class="headerlink" title="析构处理"></a>析构处理</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">list *deferred_error_list;   /* list of errors in sds form or NULL */</span><br></pre></td></tr></table></figure>
+
+<p>这块的逻辑主要是在于完成解析后，数据的释放流程：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">void freeCallReply(CallReply *rep) &#123;</span><br><span class="line">    if (!(rep-&gt;flags &amp; REPLY_FLAG_ROOT)) &#123;</span><br><span class="line">        return;</span><br><span class="line">    &#125;</span><br><span class="line">    if (rep-&gt;flags &amp; REPLY_FLAG_PARSED) &#123;</span><br><span class="line">        freeCallReplyInternal(rep);</span><br><span class="line">    &#125;</span><br><span class="line">    sdsfree(rep-&gt;original_proto);</span><br><span class="line">    if (rep-&gt;deferred_error_list)</span><br><span class="line">        listRelease(rep-&gt;deferred_error_list);</span><br><span class="line">    zfree(rep);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="递归逻辑"><a href="#递归逻辑" class="headerlink" title="递归逻辑"></a>递归逻辑</h3><p>本节单独解析 <code>callReplyParseCollection</code> 方法，源码如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">static void callReplyParseCollection(ReplyParser *parser, CallReply *rep, size_t len, const char *proto, size_t elements_per_entry) &#123;</span><br><span class="line">    rep-&gt;len = len;</span><br><span class="line">    rep-&gt;val.array = zcalloc(elements_per_entry * len * sizeof(CallReply));</span><br><span class="line">    for (size_t i = 0; i &lt; len * elements_per_entry; i += elements_per_entry) &#123;</span><br><span class="line">        for (size_t j = 0 ; j &lt; elements_per_entry ; ++j) &#123;</span><br><span class="line">            rep-&gt;val.array[i + j].private_data = rep-&gt;private_data;</span><br><span class="line">            parseReply(parser, rep-&gt;val.array + i + j);</span><br><span class="line">            rep-&gt;val.array[i + j].flags |= REPLY_FLAG_PARSED;</span><br><span class="line">            if (rep-&gt;val.array[i + j].flags &amp; REPLY_FLAG_RESP3) &#123;</span><br><span class="line">                /* If one of the sub-replies is RESP3, then the current reply is also RESP3. */</span><br><span class="line">                rep-&gt;flags |= REPLY_FLAG_RESP3;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    rep-&gt;proto = proto;</span><br><span class="line">    rep-&gt;proto_len = parser-&gt;curr_location - proto;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>其中有趣的点在于，为了支持Map和Array的操作，增加了len和elements_per_entry变量。前者表示元素个数，后者则代表，每个元素中，存在多少个数据。例如Map每个元素存在key和value俩类数据，而Array只存在Value。这么设计最终完成了Map和Array的统一，以及更好的支持了Map本身递归表示的能力。</p>
+
+  </div>
+</article>
+
+
+
+        
+          <div id="footer-post-container">
+  <div id="footer-post">
+
+    <div id="nav-footer" style="display: none">
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/link/">Link</a></li>
+         
+          <li><a href="/roadmap/">Roadmap</a></li>
+         
+          <li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li>
+        
+      </ul>
+    </div>
+
+    <div id="toc-footer" style="display: none">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E4%BA%8E%E5%8D%8F%E8%AE%AE"><span class="toc-number">1.</span> <span class="toc-text">关于协议</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8D%8F%E8%AE%AE%E5%86%85%E5%AE%B9"><span class="toc-number">2.</span> <span class="toc-text">协议内容</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#parseNull-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.1.</span> <span class="toc-text">parseNull 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseBulk-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.2.</span> <span class="toc-text">parseBulk 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseError-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.3.</span> <span class="toc-text">parseError 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseSimpleString-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.4.</span> <span class="toc-text">parseSimpleString 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseLong-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.5.</span> <span class="toc-text">parseLong 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseArray-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.6.</span> <span class="toc-text">parseArray 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseSet-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.7.</span> <span class="toc-text">parseSet 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseMap-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.8.</span> <span class="toc-text">parseMap 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseDouble-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.9.</span> <span class="toc-text">parseDouble 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseBool-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.10.</span> <span class="toc-text">parseBool 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseBigNumber-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.11.</span> <span class="toc-text">parseBigNumber 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseAttributes-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.12.</span> <span class="toc-text">parseAttributes 解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#parseVerbatimString-%E8%A7%A3%E6%9E%90"><span class="toc-number">2.13.</span> <span class="toc-text">parseVerbatimString 解析</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%89%B9%E6%AE%8A%E6%BA%90%E7%A0%81"><span class="toc-number">3.</span> <span class="toc-text">特殊源码</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8D%8F%E8%AE%AE%E7%BB%93%E6%9E%84"><span class="toc-number">3.1.</span> <span class="toc-text">协议结构</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%8D%8F%E8%AE%AE%E4%BF%A1%E6%81%AF"><span class="toc-number">3.1.1.</span> <span class="toc-text">协议信息</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E9%83%A8%E5%88%86"><span class="toc-number">3.1.2.</span> <span class="toc-text">数据部分</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9E%90%E6%9E%84%E5%A4%84%E7%90%86"><span class="toc-number">3.2.</span> <span class="toc-text">析构处理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%80%92%E5%BD%92%E9%80%BB%E8%BE%91"><span class="toc-number">3.3.</span> <span class="toc-text">递归逻辑</span></a></li></ol></li></ol>
+    </div>
+
+    <div id="share-footer" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/"><i class="fab fa-facebook fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&text=Redis新协议-RESP3"><i class="fab fa-twitter fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&title=Redis新协议-RESP3"><i class="fab fa-linkedin fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&is_video=false&description=Redis新协议-RESP3"><i class="fab fa-pinterest fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=Redis新协议-RESP3&body=Check out this article: https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/"><i class="fas fa-envelope fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&title=Redis新协议-RESP3"><i class="fab fa-get-pocket fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&title=Redis新协议-RESP3"><i class="fab fa-reddit fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&title=Redis新协议-RESP3"><i class="fab fa-stumbleupon fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&title=Redis新协议-RESP3"><i class="fab fa-digg fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&name=Redis新协议-RESP3&description="><i class="fab fa-tumblr fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=https://artikell.github.io/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/&t=Redis新协议-RESP3"><i class="fab fa-hacker-news fa-lg" aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+
+    <div id="actions-footer">
+        <a id="menu" class="icon" href="#" onclick="$('#nav-footer').toggle();return false;"><i class="fas fa-bars fa-lg" aria-hidden="true"></i> Menu</a>
+        <a id="toc" class="icon" href="#" onclick="$('#toc-footer').toggle();return false;"><i class="fas fa-list fa-lg" aria-hidden="true"></i> TOC</a>
+        <a id="share" class="icon" href="#" onclick="$('#share-footer').toggle();return false;"><i class="fas fa-share-alt fa-lg" aria-hidden="true"></i> Share</a>
+        <a id="top" style="display:none" class="icon" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up fa-lg" aria-hidden="true"></i> Top</a>
+    </div>
+
+  </div>
+</div>
+
+        
+        <footer id="footer">
+  <div class="footer-left">
+    Copyright &copy;
+    
+    
+    2016-2024
+    artikell
+  </div>
+  <div class="footer-right">
+    <nav>
+      <ul>
+        <!--
+       --><li><a href="/">Home</a></li><!--
+     --><!--
+       --><li><a href="/archives/">Writing</a></li><!--
+     --><!--
+       --><li><a href="/about/">About</a></li><!--
+     --><!--
+       --><li><a href="/link/">Link</a></li><!--
+     --><!--
+       --><li><a href="/roadmap/">Roadmap</a></li><!--
+     --><!--
+       --><li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li><!--
+     -->
+      </ul>
+    </nav>
+  </div>
+</footer>
+
+    </div>
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+ 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script> 
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script> 
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"Copy to clipboard!\">";
+    btn += '<i class="far fa-clone"></i>';
+    btn += '</span>'; 
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "Copied!");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+<!-- search -->
+
+<!-- Google Analytics -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Umami Analytics -->
+
+<!-- Disqus Comments -->
+
+<!-- utterances Comments -->
+
+</body>
+</html>

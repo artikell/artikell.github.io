@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang=cn>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="日志复制队列日志复制过程中，需要一个单独的队列来存储实际的日志信息。Redis中单独声明了replBacklog对象来保存： 1234567891011typedef struct replBacklog &amp;#123;    listNode *ref_repl_buf_node; &#x2F;* Referenced node of replication buffer blocks,">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis的日志管理与复制">
+<meta property="og:url" content="https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/index.html">
+<meta property="og:site_name" content="Artikell&#39;s Blog">
+<meta property="og:description" content="日志复制队列日志复制过程中，需要一个单独的队列来存储实际的日志信息。Redis中单独声明了replBacklog对象来保存： 1234567891011typedef struct replBacklog &amp;#123;    listNode *ref_repl_buf_node; &#x2F;* Referenced node of replication buffer blocks,">
+<meta property="og:locale">
+<meta property="article:published_time" content="2023-01-02T11:53:33.000Z">
+<meta property="article:modified_time" content="2024-06-22T11:28:54.777Z">
+<meta property="article:author" content="artikell">
+<meta name="twitter:card" content="summary">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>Redis的日志管理与复制</title>
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- persian styles -->
+    
+    <!-- rss -->
+    
+    
+	<!-- mathjax -->
+	
+<meta name="generator" content="Hexo 5.4.2"></head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  <a id="menu-icon" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="menu-icon-tablet" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="top-icon-tablet" href="#" aria-label="Top" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');" style="display:none;"><i class="fas fa-chevron-up fa-lg"></i></a>
+  <span id="menu">
+    <span id="nav">
+      <ul>
+        <!--
+       --><li><a href="/">Home</a></li><!--
+     --><!--
+       --><li><a href="/archives/">Writing</a></li><!--
+     --><!--
+       --><li><a href="/about/">About</a></li><!--
+     --><!--
+       --><li><a href="/link/">Link</a></li><!--
+     --><!--
+       --><li><a href="/roadmap/">Roadmap</a></li><!--
+     --><!--
+       --><li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li><!--
+     -->
+      </ul>
+    </span>
+    <br/>
+    <span id="actions">
+      <ul>
+        
+        <li><a class="icon" aria-label="Previous post" href="/2023/01/02/Redis%E4%B8%AD%E7%9A%84Failover%E6%9C%BA%E5%88%B6/"><i class="fas fa-chevron-left" aria-hidden="true" onmouseover="$('#i-prev').toggle();" onmouseout="$('#i-prev').toggle();"></i></a></li>
+        
+        
+        <li><a class="icon" aria-label="Back to top" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up" aria-hidden="true" onmouseover="$('#i-top').toggle();" onmouseout="$('#i-top').toggle();"></i></a></li>
+        <li><a class="icon" aria-label="Share post" href="#"><i class="fas fa-share-alt" aria-hidden="true" onmouseover="$('#i-share').toggle();" onmouseout="$('#i-share').toggle();" onclick="$('#share').toggle();return false;"></i></a></li>
+      </ul>
+      <span id="i-prev" class="info" style="display:none;">Previous post</span>
+      <span id="i-next" class="info" style="display:none;">Next post</span>
+      <span id="i-top" class="info" style="display:none;">Back to top</span>
+      <span id="i-share" class="info" style="display:none;">Share post</span>
+    </span>
+    <br/>
+    <div id="share" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/"><i class="fab fa-facebook " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&text=Redis的日志管理与复制"><i class="fab fa-twitter " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&title=Redis的日志管理与复制"><i class="fab fa-linkedin " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&is_video=false&description=Redis的日志管理与复制"><i class="fab fa-pinterest " aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=Redis的日志管理与复制&body=Check out this article: https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/"><i class="fas fa-envelope " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&title=Redis的日志管理与复制"><i class="fab fa-get-pocket " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&title=Redis的日志管理与复制"><i class="fab fa-reddit " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&title=Redis的日志管理与复制"><i class="fab fa-stumbleupon " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&title=Redis的日志管理与复制"><i class="fab fa-digg " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&name=Redis的日志管理与复制&description="><i class="fab fa-tumblr " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&t=Redis的日志管理与复制"><i class="fab fa-hacker-news " aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+    <div id="toc">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%97%A5%E5%BF%97%E5%A4%8D%E5%88%B6%E9%98%9F%E5%88%97"><span class="toc-number">1.</span> <span class="toc-text">日志复制队列</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%97%A5%E5%BF%97%E5%A4%8D%E5%88%B6%E6%B5%81%E7%A8%8B"><span class="toc-number">1.1.</span> <span class="toc-text">日志复制流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%97%A5%E5%BF%97%E5%AE%9A%E4%BD%8D%E6%B5%81%E7%A8%8B"><span class="toc-number">1.2.</span> <span class="toc-text">日志定位流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%97%A5%E5%BF%97%E5%A4%8D%E5%88%B6%E9%93%BE"><span class="toc-number">2.</span> <span class="toc-text">日志复制链</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Replica%E7%9A%84%E5%81%8F%E7%A7%BB%E4%BF%A1%E6%81%AF"><span class="toc-number">2.1.</span> <span class="toc-text">Replica的偏移信息</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Master%E7%9A%84%E5%81%8F%E7%A7%BB%E4%BF%A1%E6%81%AF"><span class="toc-number">2.2.</span> <span class="toc-text">Master的偏移信息</span></a></li></ol></li></ol>
+    </div>
+  </span>
+</div>
+
+    
+    <div class="content index py4">
+        
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 class="posttitle" itemprop="name headline">
+        Redis的日志管理与复制
+    </h1>
+
+
+
+    <div class="meta">
+      <span class="author" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span itemprop="name">artikell</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2023-01-02T11:53:33.000Z" itemprop="datePublished">2023-01-02</time>
+        
+      
+    </div>
+
+
+      
+
+      
+
+    </div>
+  </header>
+  
+
+  <div class="content" itemprop="articleBody">
+    <h2 id="日志复制队列"><a href="#日志复制队列" class="headerlink" title="日志复制队列"></a>日志复制队列</h2><p>日志复制过程中，需要一个单独的队列来存储实际的日志信息。Redis中单独声明了replBacklog对象来保存：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">typedef struct replBacklog &#123;</span><br><span class="line">    listNode *ref_repl_buf_node; /* Referenced node of replication buffer blocks,</span><br><span class="line">                                  * see the definition of replBufBlock. */</span><br><span class="line">    size_t unindexed_count;      /* The count from last creating index block. */</span><br><span class="line">    rax *blocks_index;           /* The index of recorded blocks of replication</span><br><span class="line">                                  * buffer for quickly searching replication</span><br><span class="line">                                  * offset on partial resynchronization. */</span><br><span class="line">    long long histlen;           /* Backlog actual data length */</span><br><span class="line">    long long offset;            /* Replication &quot;master offset&quot; of first</span><br><span class="line">                                  * byte in the replication backlog buffer.*/</span><br><span class="line">&#125; replBacklog;</span><br></pre></td></tr></table></figure>
+
+<p>histlen和offset分别代表当前的backlog长度以及相关的偏移量信息。</p>
+<p>ref_repl_buf_node和blocks_index则专门指向backlog的数据。</p>
+<p>整个backLog对象是通过独立的Block来存储日志信息，其实的管理通过单独的list字段 <em>repl_buffer_blocks</em> 来管理，同时通过rax树来记录offset和block的关系，以提高遍历速度：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">typedef struct replBufBlock &#123;</span><br><span class="line">    int refcount;           /* Number of replicas or repl backlog using. */</span><br><span class="line">    long long id;           /* The unique incremental number. */</span><br><span class="line">    long long repl_offset;  /* Start replication offset of the block. */</span><br><span class="line">    size_t size, used;</span><br><span class="line">    char buf[];</span><br><span class="line">&#125; replBufBlock;</span><br></pre></td></tr></table></figure>
+
+<h3 id="日志复制流程"><a href="#日志复制流程" class="headerlink" title="日志复制流程"></a>日志复制流程</h3><p>Redis中的日志是通过command来传播。最终会形成字节流并通过feedReplicationBuffer方法写入给各个replica的缓冲区。</p>
+<p>整个缓冲区是由多个black构成，整个block的大小取决于PROTO_REPLY_CHUNK_BYTES（16K）和实际写入的长度len：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">size_t size = (len &lt; PROTO_REPLY_CHUNK_BYTES) ? PROTO_REPLY_CHUNK_BYTES : len;</span><br><span class="line">tail = zmalloc_usable(size + sizeof(replBufBlock), &amp;usable_size);</span><br></pre></td></tr></table></figure>
+
+<p>若最后节点中的空闲空间足够，则不会单独申请空间。</p>
+<p>新block加入后，会写入到各个slave的ref_repl_buf_node字段中，以表示当前需要复制的日志节点，同时会自增refcount，表示有节点在使用当前的block，不可被清理。</p>
+<p>同时为了提高整个缓冲区的遍历速度，每64个block对象时，会写入一个index给replBacklog.blocks_index对象。同时，每次写入后，也会对整个backLog缓冲区进行清理，避免实际占有的空间过大。而一般的缓冲区大小限制值为1MB空间。</p>
+<h3 id="日志定位流程"><a href="#日志定位流程" class="headerlink" title="日志定位流程"></a>日志定位流程</h3><p>在进行增量同步时，master会检查当前的offset是否满足增量同步。假定在满足条件的情况下，master就需要通过rax来快速定位实际的block对象，并写入给replica的缓冲区中。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">raxStart(&amp;ri, server.repl_backlog-&gt;blocks_index);</span><br><span class="line">raxSeek(&amp;ri, &quot;&gt;&quot;, (unsigned char*)&amp;encoded_offset, sizeof(uint64_t));</span><br></pre></td></tr></table></figure>
+
+<p>主要是定位到大于offset的block node，并找到前置的node信息。而后，会从此node开始遍历，定位到实际的offset所在的node，设置为需要复制的数据。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">/* Install a writer handler first.*/</span><br><span class="line">prepareClientToWrite(c);</span><br><span class="line">/* Setting output buffer of the replica. */</span><br><span class="line">replBufBlock *o = listNodeValue(node);</span><br><span class="line">o-&gt;refcount++;</span><br><span class="line">c-&gt;ref_repl_buf_node = node;</span><br><span class="line">c-&gt;ref_block_pos = offset - o-&gt;repl_offset;</span><br></pre></td></tr></table></figure>
+
+<p>完成实际node的设置后，eventLoop将会调用writeToClient方法进行写入操作。</p>
+<ol>
+<li>针对未写完的block对象 (o-&gt;used &gt; c-&gt;ref_block_pos)，则会继续写入。</li>
+<li>针对已写完的block对象就会直接找到下一个node，并重置写入的偏移量，以及尝试清理backLog空间。</li>
+</ol>
+<h2 id="日志复制链"><a href="#日志复制链" class="headerlink" title="日志复制链"></a>日志复制链</h2><p>说完单个节点上的缓冲区管理，整个副本维持的复制链模式还需要单独描述。由于主从关系存在级联的情况，在一整个复制链上，server需要拉齐整个offset的信息，以支持后续的HA操作。</p>
+<h3 id="Replica的偏移信息"><a href="#Replica的偏移信息" class="headerlink" title="Replica的偏移信息"></a>Replica的偏移信息</h3><p>对于Master来说，在整个复制过程中，需要记录当前的Replica的复制情况。此时则需要多个字段来管理：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">long long read_reploff; /* Read replication offset if this is a master. */</span><br><span class="line">long long reploff;      /* Applied replication offset if this is a master. */</span><br><span class="line">long long repl_applied; /* Applied replication data count in querybuf, if this is a replica. */</span><br><span class="line">long long repl_ack_off; /* Replication ack offset, if this is a slave. */</span><br><span class="line">long long repl_ack_time;/* Replication ack time, if this is a slave. */</span><br><span class="line">long long psync_initial_offset; /* FULLRESYNC reply offset other slaves</span><br><span class="line">                                   copying this slave output buffer</span><br><span class="line">                                   should use. */</span><br></pre></td></tr></table></figure>
+
+<p>字段解释如下：</p>
+<ul>
+<li>read_reploff：当前已读的偏移量</li>
+<li>reploff：当前已执行的偏移量</li>
+<li>repl_applied：当前已写入的偏移量</li>
+<li>repl_ack_off：slave同步过来的offset</li>
+<li>repl_ack_time：slave同步的时间</li>
+<li>psync_initial_offset：当前slave使用的offset，在全量同步时用于定位缓冲区</li>
+</ul>
+<p>前三者共同构建了replica在接收到master数据后的处理流程，以及决定当前的buffer是否已经失效。repl_applied是在Redis7后加入，具体原因参考：<a target="_blank" rel="noopener" href="https://github.com/redis/redis/pull/10413">optimize(remove) usage of client’s pending_querybuf by soloestoy · Pull Request #10413 · redis&#x2F;redis</a></p>
+<p>而后三者主要是master中用于判断replica的信息，包括是否在线、数据是否同步成功、当前同步的数据信息等。</p>
+<h3 id="Master的偏移信息"><a href="#Master的偏移信息" class="headerlink" title="Master的偏移信息"></a>Master的偏移信息</h3><p>介绍完replica的偏移信息，还需要从master视角来确定偏移信息的表示。整个master侧的信息主要集中在 master_repl_offset 变量。</p>
+<p>在全量同步完成后，master会发送offset给replica：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">+FULLRESYNC &lt;replid&gt; &lt;offset&gt;</span><br></pre></td></tr></table></figure>
+
+<p>此时，replica会将其写入master_initial_offset变量中，当前变量则会赋予 master-&gt;reploff 和 master-&gt;read_reploff，这样也保证了reploff、read_reploff、master_repl_offset三者长时间的一致性。</p>
+<p>同时，在数据加载阶段，master_repl_offset将从rdb文件中读取出来原有的repl_offset信息，并同时设置给backlog-&gt;offset。</p>
+<p>在日志复制过程中，会对master_repl_offset进行累加。所以，在master和replica之间，也是通过rdb+log的方式来保证offset的正确性。</p>
+
+  </div>
+</article>
+
+
+
+        
+          <div id="footer-post-container">
+  <div id="footer-post">
+
+    <div id="nav-footer" style="display: none">
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/link/">Link</a></li>
+         
+          <li><a href="/roadmap/">Roadmap</a></li>
+         
+          <li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li>
+        
+      </ul>
+    </div>
+
+    <div id="toc-footer" style="display: none">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%97%A5%E5%BF%97%E5%A4%8D%E5%88%B6%E9%98%9F%E5%88%97"><span class="toc-number">1.</span> <span class="toc-text">日志复制队列</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%97%A5%E5%BF%97%E5%A4%8D%E5%88%B6%E6%B5%81%E7%A8%8B"><span class="toc-number">1.1.</span> <span class="toc-text">日志复制流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%97%A5%E5%BF%97%E5%AE%9A%E4%BD%8D%E6%B5%81%E7%A8%8B"><span class="toc-number">1.2.</span> <span class="toc-text">日志定位流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%97%A5%E5%BF%97%E5%A4%8D%E5%88%B6%E9%93%BE"><span class="toc-number">2.</span> <span class="toc-text">日志复制链</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Replica%E7%9A%84%E5%81%8F%E7%A7%BB%E4%BF%A1%E6%81%AF"><span class="toc-number">2.1.</span> <span class="toc-text">Replica的偏移信息</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Master%E7%9A%84%E5%81%8F%E7%A7%BB%E4%BF%A1%E6%81%AF"><span class="toc-number">2.2.</span> <span class="toc-text">Master的偏移信息</span></a></li></ol></li></ol>
+    </div>
+
+    <div id="share-footer" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/"><i class="fab fa-facebook fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&text=Redis的日志管理与复制"><i class="fab fa-twitter fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&title=Redis的日志管理与复制"><i class="fab fa-linkedin fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&is_video=false&description=Redis的日志管理与复制"><i class="fab fa-pinterest fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=Redis的日志管理与复制&body=Check out this article: https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/"><i class="fas fa-envelope fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&title=Redis的日志管理与复制"><i class="fab fa-get-pocket fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&title=Redis的日志管理与复制"><i class="fab fa-reddit fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&title=Redis的日志管理与复制"><i class="fab fa-stumbleupon fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&title=Redis的日志管理与复制"><i class="fab fa-digg fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&name=Redis的日志管理与复制&description="><i class="fab fa-tumblr fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=https://artikell.github.io/2023/01/02/Redis%E7%9A%84%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E4%B8%8E%E5%A4%8D%E5%88%B6/&t=Redis的日志管理与复制"><i class="fab fa-hacker-news fa-lg" aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+
+    <div id="actions-footer">
+        <a id="menu" class="icon" href="#" onclick="$('#nav-footer').toggle();return false;"><i class="fas fa-bars fa-lg" aria-hidden="true"></i> Menu</a>
+        <a id="toc" class="icon" href="#" onclick="$('#toc-footer').toggle();return false;"><i class="fas fa-list fa-lg" aria-hidden="true"></i> TOC</a>
+        <a id="share" class="icon" href="#" onclick="$('#share-footer').toggle();return false;"><i class="fas fa-share-alt fa-lg" aria-hidden="true"></i> Share</a>
+        <a id="top" style="display:none" class="icon" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up fa-lg" aria-hidden="true"></i> Top</a>
+    </div>
+
+  </div>
+</div>
+
+        
+        <footer id="footer">
+  <div class="footer-left">
+    Copyright &copy;
+    
+    
+    2016-2024
+    artikell
+  </div>
+  <div class="footer-right">
+    <nav>
+      <ul>
+        <!--
+       --><li><a href="/">Home</a></li><!--
+     --><!--
+       --><li><a href="/archives/">Writing</a></li><!--
+     --><!--
+       --><li><a href="/about/">About</a></li><!--
+     --><!--
+       --><li><a href="/link/">Link</a></li><!--
+     --><!--
+       --><li><a href="/roadmap/">Roadmap</a></li><!--
+     --><!--
+       --><li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li><!--
+     -->
+      </ul>
+    </nav>
+  </div>
+</footer>
+
+    </div>
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+ 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script> 
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script> 
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"Copy to clipboard!\">";
+    btn += '<i class="far fa-clone"></i>';
+    btn += '</span>'; 
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "Copied!");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+<!-- search -->
+
+<!-- Google Analytics -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Umami Analytics -->
+
+<!-- Disqus Comments -->
+
+<!-- utterances Comments -->
+
+</body>
+</html>

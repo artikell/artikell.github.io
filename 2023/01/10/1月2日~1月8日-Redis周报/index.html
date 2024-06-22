@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang=cn>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="CommitLog 分析 Fix issues with listpack encoded set (#11685)   修复了OBJ_ENCODING_LISTPACK的内存统计方法优化了ZRANDMEMBER可能出现的OOM操作，增加了每次申请空间的限制。   In cluster-mode enabled, override the databases config at startup t">
+<meta property="og:type" content="article">
+<meta property="og:title" content="1月2日~1月8日-Redis周报">
+<meta property="og:url" content="https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/index.html">
+<meta property="og:site_name" content="Artikell&#39;s Blog">
+<meta property="og:description" content="CommitLog 分析 Fix issues with listpack encoded set (#11685)   修复了OBJ_ENCODING_LISTPACK的内存统计方法优化了ZRANDMEMBER可能出现的OOM操作，增加了每次申请空间的限制。   In cluster-mode enabled, override the databases config at startup t">
+<meta property="og:locale">
+<meta property="article:published_time" content="2023-01-09T16:30:28.000Z">
+<meta property="article:modified_time" content="2024-06-22T11:28:54.775Z">
+<meta property="article:author" content="artikell">
+<meta name="twitter:card" content="summary">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>1月2日~1月8日-Redis周报</title>
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- persian styles -->
+    
+    <!-- rss -->
+    
+    
+	<!-- mathjax -->
+	
+<meta name="generator" content="Hexo 5.4.2"></head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  <a id="menu-icon" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="menu-icon-tablet" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="top-icon-tablet" href="#" aria-label="Top" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');" style="display:none;"><i class="fas fa-chevron-up fa-lg"></i></a>
+  <span id="menu">
+    <span id="nav">
+      <ul>
+        <!--
+       --><li><a href="/">Home</a></li><!--
+     --><!--
+       --><li><a href="/archives/">Writing</a></li><!--
+     --><!--
+       --><li><a href="/about/">About</a></li><!--
+     --><!--
+       --><li><a href="/link/">Link</a></li><!--
+     --><!--
+       --><li><a href="/roadmap/">Roadmap</a></li><!--
+     --><!--
+       --><li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li><!--
+     -->
+      </ul>
+    </span>
+    <br/>
+    <span id="actions">
+      <ul>
+        
+        <li><a class="icon" aria-label="Previous post" href="/2023/01/10/Redis%E4%B8%AD%E7%9A%84Timeout%E5%A4%84%E7%90%86/"><i class="fas fa-chevron-left" aria-hidden="true" onmouseover="$('#i-prev').toggle();" onmouseout="$('#i-prev').toggle();"></i></a></li>
+        
+        
+        <li><a class="icon" aria-label="Next post" href="/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/"><i class="fas fa-chevron-right" aria-hidden="true" onmouseover="$('#i-next').toggle();" onmouseout="$('#i-next').toggle();"></i></a></li>
+        
+        <li><a class="icon" aria-label="Back to top" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up" aria-hidden="true" onmouseover="$('#i-top').toggle();" onmouseout="$('#i-top').toggle();"></i></a></li>
+        <li><a class="icon" aria-label="Share post" href="#"><i class="fas fa-share-alt" aria-hidden="true" onmouseover="$('#i-share').toggle();" onmouseout="$('#i-share').toggle();" onclick="$('#share').toggle();return false;"></i></a></li>
+      </ul>
+      <span id="i-prev" class="info" style="display:none;">Previous post</span>
+      <span id="i-next" class="info" style="display:none;">Next post</span>
+      <span id="i-top" class="info" style="display:none;">Back to top</span>
+      <span id="i-share" class="info" style="display:none;">Share post</span>
+    </span>
+    <br/>
+    <div id="share" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/"><i class="fab fa-facebook " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&text=1月2日~1月8日-Redis周报"><i class="fab fa-twitter " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&title=1月2日~1月8日-Redis周报"><i class="fab fa-linkedin " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&is_video=false&description=1月2日~1月8日-Redis周报"><i class="fab fa-pinterest " aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=1月2日~1月8日-Redis周报&body=Check out this article: https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/"><i class="fas fa-envelope " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&title=1月2日~1月8日-Redis周报"><i class="fab fa-get-pocket " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&title=1月2日~1月8日-Redis周报"><i class="fab fa-reddit " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&title=1月2日~1月8日-Redis周报"><i class="fab fa-stumbleupon " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&title=1月2日~1月8日-Redis周报"><i class="fab fa-digg " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&name=1月2日~1月8日-Redis周报&description="><i class="fab fa-tumblr " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&t=1月2日~1月8日-Redis周报"><i class="fab fa-hacker-news " aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+    <div id="toc">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#CommitLog-%E5%88%86%E6%9E%90"><span class="toc-number">1.</span> <span class="toc-text">CommitLog 分析</span></a></li></ol>
+    </div>
+  </span>
+</div>
+
+    
+    <div class="content index py4">
+        
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 class="posttitle" itemprop="name headline">
+        1月2日~1月8日-Redis周报
+    </h1>
+
+
+
+    <div class="meta">
+      <span class="author" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span itemprop="name">artikell</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2023-01-09T16:30:28.000Z" itemprop="datePublished">2023-01-10</time>
+        
+      
+    </div>
+
+
+      
+
+      
+
+    </div>
+  </header>
+  
+
+  <div class="content" itemprop="articleBody">
+    <h2 id="CommitLog-分析"><a href="#CommitLog-分析" class="headerlink" title="CommitLog 分析"></a>CommitLog 分析</h2><ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/redis/redis/commit/d0cc3de73f91ca79b2343e73e640b40709cfcaf5">Fix issues with listpack encoded set (#11685)</a></li>
+</ul>
+<blockquote>
+<p>修复了OBJ_ENCODING_LISTPACK的内存统计方法<br>优化了ZRANDMEMBER可能出现的OOM操作，增加了每次申请空间的限制。</p>
+</blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/redis/redis/commit/cb1fff3cb6a944d1f9cc67f8aa8b1d92648bbade">In cluster-mode enabled, override the databases config at startup to 1 (</a></li>
+</ul>
+<blockquote>
+<p>在config中，对cluster-mode下的dbnum做处理，替换原有的exit操作</p>
+</blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/redis/redis/commit/a2e75a78b424a6faca4bba4b1bf8270b98407284">Include peer-addr:port and local-addr:port when logging accept errors (…</a></li>
+</ul>
+<blockquote>
+<p>日志中增加本地和对端的addr信息</p>
+</blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/redis/redis/commit/4ef4c4a686b6edaf825635d942b698349f67bcc6">Make redis-cli support PSYNC command (#11647)</a></li>
+</ul>
+<blockquote>
+<p>在redis-cli中支持PSYNC命令。【TODO】</p>
+</blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/redis/redis/commit/c8052122a2af9b85124a8697488a0c44d66777b8">Fix potential issue with Lua argv caching, module command filter and …</a></li>
+</ul>
+<blockquote>
+<p>在lua中，经过module的RM_CommandFilterArgInsert操作，可能导致原有的argv对象大小发生变化，但由于使用的zrealloc，地址并未变化，最终导致内存损坏，故增加了对argv_len的判断。</p>
+</blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/redis/redis/commit/0ecf6cdc0a81f79e6875191ef9aa4f16c9110223">fix handshake timeout replication test race (#11640)</a></li>
+</ul>
+<blockquote>
+<p>优化了主从同步时的超时时间设置，避免ci错误</p>
+</blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/redis/redis/commit/dec529f4be3e3314300bb513e7a9f3af636e13b0">Introduce .is_local method for connection layer</a></li>
+</ul>
+<blockquote>
+<p>抽象了对本地client的判断逻辑，从原有的islocalClient抽象出了对各类连接的方法connIsLocal</p>
+</blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/redis/redis/commit/884ca601b21ec6ef4d216ae850c0cf503f762623">Optimize the performance of msetnx command by call lookupkey only once (</a></li>
+</ul>
+<blockquote>
+<p>优化mset的多次lookup操作</p>
+</blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/redis/redis/commit/d2d6bc18ebc63265c2ee55ed79ab6ad2044b3bc3">Add cluster info and cluster nodes to bug report (#11656)</a></li>
+</ul>
+<blockquote>
+<p>增加了cluster info命令以及在core后打印cluster的信息</p>
+</blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/redis/redis/commit/383d902ce68131cf40d6122ce09e305e672e8555">reprocess command when client is unblocked on keys (#11012) · redis&#x2F;redis@383d902</a></li>
+</ul>
+<blockquote>
+<p>对blocked client做了很大量的重构，【TODO】</p>
+</blockquote>
+
+  </div>
+</article>
+
+
+
+        
+          <div id="footer-post-container">
+  <div id="footer-post">
+
+    <div id="nav-footer" style="display: none">
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/link/">Link</a></li>
+         
+          <li><a href="/roadmap/">Roadmap</a></li>
+         
+          <li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li>
+        
+      </ul>
+    </div>
+
+    <div id="toc-footer" style="display: none">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#CommitLog-%E5%88%86%E6%9E%90"><span class="toc-number">1.</span> <span class="toc-text">CommitLog 分析</span></a></li></ol>
+    </div>
+
+    <div id="share-footer" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/"><i class="fab fa-facebook fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&text=1月2日~1月8日-Redis周报"><i class="fab fa-twitter fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&title=1月2日~1月8日-Redis周报"><i class="fab fa-linkedin fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&is_video=false&description=1月2日~1月8日-Redis周报"><i class="fab fa-pinterest fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=1月2日~1月8日-Redis周报&body=Check out this article: https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/"><i class="fas fa-envelope fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&title=1月2日~1月8日-Redis周报"><i class="fab fa-get-pocket fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&title=1月2日~1月8日-Redis周报"><i class="fab fa-reddit fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&title=1月2日~1月8日-Redis周报"><i class="fab fa-stumbleupon fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&title=1月2日~1月8日-Redis周报"><i class="fab fa-digg fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&name=1月2日~1月8日-Redis周报&description="><i class="fab fa-tumblr fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=https://artikell.github.io/2023/01/10/1%E6%9C%882%E6%97%A5~1%E6%9C%888%E6%97%A5-Redis%E5%91%A8%E6%8A%A5/&t=1月2日~1月8日-Redis周报"><i class="fab fa-hacker-news fa-lg" aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+
+    <div id="actions-footer">
+        <a id="menu" class="icon" href="#" onclick="$('#nav-footer').toggle();return false;"><i class="fas fa-bars fa-lg" aria-hidden="true"></i> Menu</a>
+        <a id="toc" class="icon" href="#" onclick="$('#toc-footer').toggle();return false;"><i class="fas fa-list fa-lg" aria-hidden="true"></i> TOC</a>
+        <a id="share" class="icon" href="#" onclick="$('#share-footer').toggle();return false;"><i class="fas fa-share-alt fa-lg" aria-hidden="true"></i> Share</a>
+        <a id="top" style="display:none" class="icon" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up fa-lg" aria-hidden="true"></i> Top</a>
+    </div>
+
+  </div>
+</div>
+
+        
+        <footer id="footer">
+  <div class="footer-left">
+    Copyright &copy;
+    
+    
+    2016-2024
+    artikell
+  </div>
+  <div class="footer-right">
+    <nav>
+      <ul>
+        <!--
+       --><li><a href="/">Home</a></li><!--
+     --><!--
+       --><li><a href="/archives/">Writing</a></li><!--
+     --><!--
+       --><li><a href="/about/">About</a></li><!--
+     --><!--
+       --><li><a href="/link/">Link</a></li><!--
+     --><!--
+       --><li><a href="/roadmap/">Roadmap</a></li><!--
+     --><!--
+       --><li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li><!--
+     -->
+      </ul>
+    </nav>
+  </div>
+</footer>
+
+    </div>
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+ 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script> 
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script> 
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"Copy to clipboard!\">";
+    btn += '<i class="far fa-clone"></i>';
+    btn += '</span>'; 
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "Copied!");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+<!-- search -->
+
+<!-- Google Analytics -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Umami Analytics -->
+
+<!-- Disqus Comments -->
+
+<!-- utterances Comments -->
+
+</body>
+</html>

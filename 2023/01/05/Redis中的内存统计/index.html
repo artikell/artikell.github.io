@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang=cn>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="Redis中的内存计算，由于最初未使用很好的分类，导致最初的内存统计只能通过反推。通过各项指标的计算，并进行扣除已知的项目，剩余的内存被就认为是业务所需的空间。此文单独将相关的内存项目进行归纳，确定有多少空间是被认为是Redis自身所需的空间。 计算逻辑由于整个计算逻辑相对比较简单，那当前就直接贴出代码： 1234567891011121314151617181920212223242526272">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis中的内存统计">
+<meta property="og:url" content="https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/index.html">
+<meta property="og:site_name" content="Artikell&#39;s Blog">
+<meta property="og:description" content="Redis中的内存计算，由于最初未使用很好的分类，导致最初的内存统计只能通过反推。通过各项指标的计算，并进行扣除已知的项目，剩余的内存被就认为是业务所需的空间。此文单独将相关的内存项目进行归纳，确定有多少空间是被认为是Redis自身所需的空间。 计算逻辑由于整个计算逻辑相对比较简单，那当前就直接贴出代码： 1234567891011121314151617181920212223242526272">
+<meta property="og:locale">
+<meta property="article:published_time" content="2023-01-05T15:56:45.000Z">
+<meta property="article:modified_time" content="2024-06-22T11:28:54.776Z">
+<meta property="article:author" content="artikell">
+<meta name="twitter:card" content="summary">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>Redis中的内存统计</title>
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- persian styles -->
+    
+    <!-- rss -->
+    
+    
+	<!-- mathjax -->
+	
+<meta name="generator" content="Hexo 5.4.2"></head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  <a id="menu-icon" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="menu-icon-tablet" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="top-icon-tablet" href="#" aria-label="Top" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');" style="display:none;"><i class="fas fa-chevron-up fa-lg"></i></a>
+  <span id="menu">
+    <span id="nav">
+      <ul>
+        <!--
+       --><li><a href="/">Home</a></li><!--
+     --><!--
+       --><li><a href="/archives/">Writing</a></li><!--
+     --><!--
+       --><li><a href="/about/">About</a></li><!--
+     --><!--
+       --><li><a href="/link/">Link</a></li><!--
+     --><!--
+       --><li><a href="/roadmap/">Roadmap</a></li><!--
+     --><!--
+       --><li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li><!--
+     -->
+      </ul>
+    </span>
+    <br/>
+    <span id="actions">
+      <ul>
+        
+        <li><a class="icon" aria-label="Previous post" href="/2023/01/08/Redis%E6%96%B0%E5%8D%8F%E8%AE%AE-RESP3/"><i class="fas fa-chevron-left" aria-hidden="true" onmouseover="$('#i-prev').toggle();" onmouseout="$('#i-prev').toggle();"></i></a></li>
+        
+        
+        <li><a class="icon" aria-label="Next post" href="/2023/01/04/%E5%85%B3%E4%BA%8Esyscheck%EF%BC%8CRedis%E9%9C%80%E8%A6%81%E4%BB%80%E4%B9%88%E6%A0%B7%E7%9A%84%E6%9C%8D%E5%8A%A1%E5%99%A8/"><i class="fas fa-chevron-right" aria-hidden="true" onmouseover="$('#i-next').toggle();" onmouseout="$('#i-next').toggle();"></i></a></li>
+        
+        <li><a class="icon" aria-label="Back to top" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up" aria-hidden="true" onmouseover="$('#i-top').toggle();" onmouseout="$('#i-top').toggle();"></i></a></li>
+        <li><a class="icon" aria-label="Share post" href="#"><i class="fas fa-share-alt" aria-hidden="true" onmouseover="$('#i-share').toggle();" onmouseout="$('#i-share').toggle();" onclick="$('#share').toggle();return false;"></i></a></li>
+      </ul>
+      <span id="i-prev" class="info" style="display:none;">Previous post</span>
+      <span id="i-next" class="info" style="display:none;">Next post</span>
+      <span id="i-top" class="info" style="display:none;">Back to top</span>
+      <span id="i-share" class="info" style="display:none;">Share post</span>
+    </span>
+    <br/>
+    <div id="share" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/"><i class="fab fa-facebook " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&text=Redis中的内存统计"><i class="fab fa-twitter " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&title=Redis中的内存统计"><i class="fab fa-linkedin " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&is_video=false&description=Redis中的内存统计"><i class="fab fa-pinterest " aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=Redis中的内存统计&body=Check out this article: https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/"><i class="fas fa-envelope " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&title=Redis中的内存统计"><i class="fab fa-get-pocket " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&title=Redis中的内存统计"><i class="fab fa-reddit " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&title=Redis中的内存统计"><i class="fab fa-stumbleupon " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&title=Redis中的内存统计"><i class="fab fa-digg " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&name=Redis中的内存统计&description="><i class="fab fa-tumblr " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&t=Redis中的内存统计"><i class="fab fa-hacker-news " aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+    <div id="toc">
+      <ol class="toc"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%A1%E7%AE%97%E9%80%BB%E8%BE%91"><span class="toc-number">1.</span> <span class="toc-text">计算逻辑</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%9D%9E%E4%B8%9A%E5%8A%A1%E7%9A%84%E7%A9%BA%E9%97%B4"><span class="toc-number">2.</span> <span class="toc-text">非业务的空间</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%AF%E8%A7%82%E6%B5%8B%E7%9A%84%E7%A9%BA%E9%97%B4"><span class="toc-number">3.</span> <span class="toc-text">可观测的空间</span></a></li></ol>
+    </div>
+  </span>
+</div>
+
+    
+    <div class="content index py4">
+        
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 class="posttitle" itemprop="name headline">
+        Redis中的内存统计
+    </h1>
+
+
+
+    <div class="meta">
+      <span class="author" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span itemprop="name">artikell</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2023-01-05T15:56:45.000Z" itemprop="datePublished">2023-01-05</time>
+        
+      
+    </div>
+
+
+      
+
+      
+
+    </div>
+  </header>
+  
+
+  <div class="content" itemprop="articleBody">
+    <p>Redis中的内存计算，由于最初未使用很好的分类，导致最初的内存统计只能通过反推。通过各项指标的计算，并进行扣除已知的项目，剩余的内存被就认为是业务所需的空间。此文单独将相关的内存项目进行归纳，确定有多少空间是被认为是Redis自身所需的空间。</p>
+<h3 id="计算逻辑"><a href="#计算逻辑" class="headerlink" title="计算逻辑"></a>计算逻辑</h3><p>由于整个计算逻辑相对比较简单，那当前就直接贴出代码：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line">int getMaxmemoryState(size_t *total, size_t *logical, size_t *tofree, float *level) &#123;</span><br><span class="line">    size_t mem_reported, mem_used, mem_tofree;</span><br><span class="line"></span><br><span class="line">    /* Check if we are over the memory usage limit. If we are not, no need</span><br><span class="line">     * to subtract the slaves output buffers. We can just return ASAP. */</span><br><span class="line">    mem_reported = zmalloc_used_memory();</span><br><span class="line">    if (total) *total = mem_reported;</span><br><span class="line"></span><br><span class="line">    /* We may return ASAP if there is no need to compute the level. */</span><br><span class="line">    if (!server.maxmemory) &#123;</span><br><span class="line">        if (level) *level = 0;</span><br><span class="line">        return C_OK;</span><br><span class="line">    &#125;</span><br><span class="line">    if (mem_reported &lt;= server.maxmemory &amp;&amp; !level) return C_OK;</span><br><span class="line"></span><br><span class="line">    /* Remove the size of slaves output buffers and AOF buffer from the</span><br><span class="line">     * count of used memory. */</span><br><span class="line">    mem_used = mem_reported;</span><br><span class="line">    size_t overhead = freeMemoryGetNotCountedMemory();</span><br><span class="line">    mem_used = (mem_used &gt; overhead) ? mem_used-overhead : 0;</span><br><span class="line"></span><br><span class="line">    /* Compute the ratio of memory usage. */</span><br><span class="line">    if (level) *level = (float)mem_used / (float)server.maxmemory;</span><br><span class="line"></span><br><span class="line">    if (mem_reported &lt;= server.maxmemory) return C_OK;</span><br><span class="line"></span><br><span class="line">    /* Check if we are still over the memory limit. */</span><br><span class="line">    if (mem_used &lt;= server.maxmemory) return C_OK;</span><br><span class="line"></span><br><span class="line">    /* Compute how much memory we need to free. */</span><br><span class="line">    mem_tofree = mem_used - server.maxmemory;</span><br><span class="line"></span><br><span class="line">    if (logical) *logical = mem_used;</span><br><span class="line">    if (tofree) *tofree = mem_tofree;</span><br><span class="line"></span><br><span class="line">    return C_ERR;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>当前方法主要用于在内存淘汰的计算，故，优先判断 maxmemory 和 malloc 的空间，确定是否需要淘汰。</p>
+<p>剩余的空间，主要是用于判断 无需处理的空间：overhead。这时候，整个逻辑可以得到3块数据：</p>
+<ol>
+<li>logical - 实际业务使用的空间</li>
+<li>tofree - 实际需要释放的空间</li>
+<li>total - 总共申请的空间</li>
+</ol>
+<p>同时，level 是为了给 Module 模式下用于判断空间情况。故本期不做详解。</p>
+<h3 id="非业务的空间"><a href="#非业务的空间" class="headerlink" title="非业务的空间"></a>非业务的空间</h3><p>针对非业务空间，其实存在很多可以考虑的。但是，在整个社区版本中，主要针对俩块空间进行豁免：aof_buf、repl_buffer_mem。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">if ((long long)server.repl_buffer_mem &gt; server.repl_backlog_size) &#123;</span><br><span class="line">    /* We use list structure to manage replication buffer blocks, so backlog</span><br><span class="line">     * also occupies some extra memory, we can&#x27;t know exact blocks numbers,</span><br><span class="line">     * we only get approximate size according to per block size. */</span><br><span class="line">    size_t extra_approx_size =</span><br><span class="line">        (server.repl_backlog_size/PROTO_REPLY_CHUNK_BYTES + 1) *</span><br><span class="line">        (sizeof(replBufBlock)+sizeof(listNode));</span><br><span class="line">    size_t counted_mem = server.repl_backlog_size + extra_approx_size;</span><br><span class="line">    if (server.repl_buffer_mem &gt; counted_mem) &#123;</span><br><span class="line">        overhead += (server.repl_buffer_mem - counted_mem);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">if (server.aof_state != AOF_OFF) &#123;</span><br><span class="line">    overhead += sdsAllocSize(server.aof_buf);</span><br><span class="line">&#125;</span><br><span class="line">return overhead;</span><br></pre></td></tr></table></figure>
+
+<p>其中，repl_buffer_mem 的空间，由于会被定期清理，故，主要会豁免掉超出的部分。</p>
+<h3 id="可观测的空间"><a href="#可观测的空间" class="headerlink" title="可观测的空间"></a>可观测的空间</h3><p>既然整个的内存空间，并不能豁免太多空间，那么，我们还需要确定一下，哪些空间属于业务可观测。</p>
+<p>此时，可观测的空间可以通过命令查看：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">MEMORY DOCTOR</span><br></pre></td></tr></table></figure>
+
+<p>普通的字段信息：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>描述</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>peak_allocated</td>
+<td>最大的内存空间</td>
+<td>server.stat_peak_memory</td>
+</tr>
+<tr>
+<td>peak_perc</td>
+<td>当前使用的空间占有的比例</td>
+<td></td>
+</tr>
+<tr>
+<td>total_allocated</td>
+<td>实际分配的全部</td>
+<td>zmalloc_used</td>
+</tr>
+<tr>
+<td>startup_allocated</td>
+<td>启动时的初始化空间</td>
+<td>initial_memory_usage</td>
+</tr>
+<tr>
+<td>repl_backlog</td>
+<td>实际的backlog空间</td>
+<td></td>
+</tr>
+<tr>
+<td>clients_slaves</td>
+<td>backlog超出的空间，Redis7独有</td>
+<td></td>
+</tr>
+<tr>
+<td>clients_normal</td>
+<td>普通客户端实际限制的空间</td>
+<td>stat_clients_type_memory</td>
+</tr>
+<tr>
+<td>cluster_links</td>
+<td>cluster模式下的连接空间</td>
+<td>stat_cluster_links_memory</td>
+</tr>
+<tr>
+<td>aof_buffer</td>
+<td>aof的buffer空间</td>
+<td>aof_buf</td>
+</tr>
+<tr>
+<td>lua_caches</td>
+<td>统计整个lua中使用的空间，包括script空间</td>
+<td></td>
+</tr>
+<tr>
+<td>functions_caches</td>
+<td>统计整个function中使用的空间</td>
+<td></td>
+</tr>
+<tr>
+<td>overhead_total</td>
+<td>包括所有的空间</td>
+<td></td>
+</tr>
+<tr>
+<td>dataset</td>
+<td>除去上述的空间后，剩下的数据空间</td>
+<td></td>
+</tr>
+<tr>
+<td>total_keys</td>
+<td>所有db的key个数</td>
+<td>dictSize(db-&gt;dict)</td>
+</tr>
+<tr>
+<td>bytes_per_key</td>
+<td>每个key平均占有的空间</td>
+<td></td>
+</tr>
+<tr>
+<td>dataset_perc</td>
+<td>数据空间的占比</td>
+<td></td>
+</tr>
+</tbody></table>
+<p>碎片空间的字段信息：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>描述</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>total_frag</td>
+<td>实际使用空间较分配空间的比例</td>
+<td>rss &#x2F; used</td>
+</tr>
+<tr>
+<td>total_frag_bytes</td>
+<td>实际使用空间超出分配空间的大小</td>
+<td>rss - used</td>
+</tr>
+<tr>
+<td>rss_extra</td>
+<td>实际使用空间较常驻空间的比例</td>
+<td>rss &#x2F; resident</td>
+</tr>
+<tr>
+<td>rss_extra_bytes</td>
+<td>实际使用空间超出常驻空间的大小</td>
+<td>rss - resident</td>
+</tr>
+<tr>
+<td>allocator_frag</td>
+<td>活跃的空间较分配空间的比例</td>
+<td>active &#x2F; allocated</td>
+</tr>
+<tr>
+<td>allocator_frag_bytes</td>
+<td>活跃的空间超出分配空间的大小</td>
+<td>active - allocated</td>
+</tr>
+<tr>
+<td>allocator_rss</td>
+<td>分配空间较活跃的空间的比例</td>
+<td>resident &#x2F; active</td>
+</tr>
+<tr>
+<td>allocator_rss_bytes</td>
+<td>分配空间超出活跃的空间的大小</td>
+<td>resident - active</td>
+</tr>
+</tbody></table>
+<p>其中 resident, active, allocated 三个变量的意义至关重要：</p>
+<ul>
+<li>resident：实际使用的物理内存数，但是与OS的RSS不同，这里不包含共享库和other non heap mappings（这里的我的理解是一般的page分为Anonymous page和File-backed Pages，前者映射我们熟悉的堆栈，后者一般用于文件缓存，所以这里拿到的其实是进程实际的RSS减去共享库和File-backed Pages[1]）。</li>
+<li>active：与 resident 不同，这不包括 jemalloc 保留以供重用的页面(purge will clean that)。</li>
+<li>allocated：与 zmalloc_used_memory 不同，它通过考虑此进程完成的所有分配（不仅是 zmalloc）来匹配 stats.resident。zmalloc的内存计算中 AOF buffers 以及 slaves output buffers 不被计算在内。</li>
+</ul>
+
+  </div>
+</article>
+
+
+
+        
+          <div id="footer-post-container">
+  <div id="footer-post">
+
+    <div id="nav-footer" style="display: none">
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/link/">Link</a></li>
+         
+          <li><a href="/roadmap/">Roadmap</a></li>
+         
+          <li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li>
+        
+      </ul>
+    </div>
+
+    <div id="toc-footer" style="display: none">
+      <ol class="toc"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%A1%E7%AE%97%E9%80%BB%E8%BE%91"><span class="toc-number">1.</span> <span class="toc-text">计算逻辑</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%9D%9E%E4%B8%9A%E5%8A%A1%E7%9A%84%E7%A9%BA%E9%97%B4"><span class="toc-number">2.</span> <span class="toc-text">非业务的空间</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%AF%E8%A7%82%E6%B5%8B%E7%9A%84%E7%A9%BA%E9%97%B4"><span class="toc-number">3.</span> <span class="toc-text">可观测的空间</span></a></li></ol>
+    </div>
+
+    <div id="share-footer" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/"><i class="fab fa-facebook fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&text=Redis中的内存统计"><i class="fab fa-twitter fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&title=Redis中的内存统计"><i class="fab fa-linkedin fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&is_video=false&description=Redis中的内存统计"><i class="fab fa-pinterest fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=Redis中的内存统计&body=Check out this article: https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/"><i class="fas fa-envelope fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&title=Redis中的内存统计"><i class="fab fa-get-pocket fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&title=Redis中的内存统计"><i class="fab fa-reddit fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&title=Redis中的内存统计"><i class="fab fa-stumbleupon fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&title=Redis中的内存统计"><i class="fab fa-digg fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&name=Redis中的内存统计&description="><i class="fab fa-tumblr fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=https://artikell.github.io/2023/01/05/Redis%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%BB%9F%E8%AE%A1/&t=Redis中的内存统计"><i class="fab fa-hacker-news fa-lg" aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+
+    <div id="actions-footer">
+        <a id="menu" class="icon" href="#" onclick="$('#nav-footer').toggle();return false;"><i class="fas fa-bars fa-lg" aria-hidden="true"></i> Menu</a>
+        <a id="toc" class="icon" href="#" onclick="$('#toc-footer').toggle();return false;"><i class="fas fa-list fa-lg" aria-hidden="true"></i> TOC</a>
+        <a id="share" class="icon" href="#" onclick="$('#share-footer').toggle();return false;"><i class="fas fa-share-alt fa-lg" aria-hidden="true"></i> Share</a>
+        <a id="top" style="display:none" class="icon" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up fa-lg" aria-hidden="true"></i> Top</a>
+    </div>
+
+  </div>
+</div>
+
+        
+        <footer id="footer">
+  <div class="footer-left">
+    Copyright &copy;
+    
+    
+    2016-2024
+    artikell
+  </div>
+  <div class="footer-right">
+    <nav>
+      <ul>
+        <!--
+       --><li><a href="/">Home</a></li><!--
+     --><!--
+       --><li><a href="/archives/">Writing</a></li><!--
+     --><!--
+       --><li><a href="/about/">About</a></li><!--
+     --><!--
+       --><li><a href="/link/">Link</a></li><!--
+     --><!--
+       --><li><a href="/roadmap/">Roadmap</a></li><!--
+     --><!--
+       --><li><a target="_blank" rel="noopener" href="http://github.com/artikell">Projects</a></li><!--
+     -->
+      </ul>
+    </nav>
+  </div>
+</footer>
+
+    </div>
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+ 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script> 
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script> 
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"Copy to clipboard!\">";
+    btn += '<i class="far fa-clone"></i>';
+    btn += '</span>'; 
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "Copied!");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+<!-- search -->
+
+<!-- Google Analytics -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Umami Analytics -->
+
+<!-- Disqus Comments -->
+
+<!-- utterances Comments -->
+
+</body>
+</html>
