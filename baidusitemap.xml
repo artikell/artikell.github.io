@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
+    <loc>https://artikell.github.io/2024/06/22/The-lag-and-entries-add-fields-of-Redis-stream/</loc>
+    <lastmod>2024-06-22</lastmod>
+  </url>
+  <url>
     <loc>https://artikell.github.io/2024/06/22/Git-automation-completes-hexo-deployment/</loc>
     <lastmod>2024-06-22</lastmod>
   </url>
