@@ -14,7 +14,7 @@
 <meta property="og:description" content="0. 前言在hexo使用上，将deploy和生成功能分开，同时需要2个命令来控制是一个很好的设计。但是，对于我这么懒惰的人，我当然是希望将这个流程自动化了。然后，其中遇到了几个问题：  hexo环境自动化部署 hexo提交自动化  Setup.sh环境自动化，一般都是通过一个统一的脚步来实现即可。那么，就可以实现一个setup.sh脚本来初始化，例如： 1234567#!&#x2F;bin&#x2F;bashecho">
 <meta property="og:locale">
 <meta property="article:published_time" content="2024-06-22T12:50:34.000Z">
-<meta property="article:modified_time" content="2024-06-22T13:27:19.056Z">
+<meta property="article:modified_time" content="2024-06-22T13:44:36.595Z">
 <meta property="article:author" content="artikell">
 <meta name="twitter:card" content="summary">
     
@@ -169,6 +169,12 @@
 <h1 id="Image"><a href="#Image" class="headerlink" title="Image"></a>Image</h1><p>参考<a target="_blank" rel="noopener" href="https://gs42.org/posts/VSCode_Hexo_insert_image/">使用VSCode编辑Hexo博客时插入图片</a> 文章，我们需要设置相关的image路径。</p>
 <p>修改<code>_config.yml</code>文件：</p>
 <figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">post_asset_folder: false</span><br></pre></td></tr></table></figure>
+
+<p>并在vscode的配置修改元素、找到<code>markdown &gt; Copy Files ：Destination</code>，点击Add Item，添加的对应的键值如下（需要根据自己的目录结构和自定义页面自行修改）：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">&quot;/source/_posts/**/**/*&quot;: </span><br><span class="line">&quot;$&#123;documentWorkspaceFolder&#125;/source/img/$&#123;documentBaseName&#125;-$&#123;fileName&#125;&quot;</span><br><span class="line"></span><br><span class="line">&quot;/source/about/*&quot;: </span><br><span class="line">&quot;$&#123;documentWorkspaceFolder&#125;/source/img/about-$&#123;fileName&#125;&quot;</span><br><span class="line"></span><br><span class="line">&quot;/source/cross/*&quot;: </span><br><span class="line">&quot;$&#123;documentWorkspaceFolder&#125;/source/img/cross-$&#123;fileName&#125;&quot;</span><br><span class="line"></span><br><span class="line">&quot;/source/**/*&quot;: </span><br><span class="line">&quot;$&#123;documentWorkspaceFolder&#125;/source/img/pages-$&#123;fileName&#125;&quot;</span><br></pre></td></tr></table></figure>
+
+<p>当前，也可以支持<code>settings.json</code>文件：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    &quot;markdown.copyFiles.destination&quot;: &#123;</span><br><span class="line">        &quot;/source/**/*&quot;: &quot;$&#123;documentWorkspaceFolder&#125;/source/images/pages-$&#123;fileName&#125;&quot;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 <h1 id="Result"><a href="#Result" class="headerlink" title="Result"></a>Result</h1><p>这样， 我就不用再纠结hexo的环境了。我只需要拉取仓库，并执行<code>bash setup.sh</code>，再继续编写我的文档即可。</p>
 
