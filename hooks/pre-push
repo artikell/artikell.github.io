@@ -22,4 +22,5 @@
 remote="$1"
 url="$2"
 
+hexo g
 hexo d
