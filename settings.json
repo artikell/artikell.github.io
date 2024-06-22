@@ -1,0 +1,5 @@
+{
+    "markdown.copyFiles.destination": {
+        "/source/**/*": "${documentWorkspaceFolder}/source/images/pages-${fileName}"
+    }
+}

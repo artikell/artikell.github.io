@@ -40,6 +40,39 @@ hexo g
 hexo d
 ```
 
+# Image
+
+参考[使用VSCode编辑Hexo博客时插入图片](https://gs42.org/posts/VSCode_Hexo_insert_image/) 文章，我们需要设置相关的image路径。
+
+修改`_config.yml`文件：
+```
+post_asset_folder: false
+```
+
+并在vscode的配置修改元素、找到`markdown > Copy Files ：Destination`，点击Add Item，添加的对应的键值如下（需要根据自己的目录结构和自定义页面自行修改）：
+```
+"/source/_posts/**/**/*": 
+"${documentWorkspaceFolder}/source/img/${documentBaseName}-${fileName}"
+
+"/source/about/*": 
+"${documentWorkspaceFolder}/source/img/about-${fileName}"
+
+"/source/cross/*": 
+"${documentWorkspaceFolder}/source/img/cross-${fileName}"
+
+"/source/**/*": 
+"${documentWorkspaceFolder}/source/img/pages-${fileName}"
+```
+
+当前，也可以支持`settings.json`文件：
+```
+{
+    "markdown.copyFiles.destination": {
+        "/source/**/*": "${documentWorkspaceFolder}/source/images/pages-${fileName}"
+    }
+}
+```
+
 # Result
 
 这样， 我就不用再纠结hexo的环境了。我只需要拉取仓库，并执行`bash setup.sh`，再继续编写我的文档即可。
