@@ -15,3 +15,9 @@ date: 2023-01-02 11:38:38
 ## Distributed storage
 
 - [dragonflydb/dragonfly: A modern replacement for Redis and Memcached](https://github.com/dragonflydb/dragonfly)
+- [goodform/awesome-redis-module: This is a curated list of resources related to valkey/redis module, including a selection of useful module.](https://github.com/goodform/awesome-redis-module)
+
+## Dependent links
+
+- [artikell/artikell.github.io: http://artikell.github.io](https://github.com/artikell/artikell.github.io)
+- [probberechts/hexo-theme-cactus: :cactus: A responsive, clean and simple theme for Hexo.](https://github.com/probberechts/hexo-theme-cactus)
